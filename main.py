@@ -83,14 +83,14 @@ if prompt:
     st.rerun()
     
 # ==========================================================
-print("\n ===== MAIN =====")
+# print("\n ===== MAIN =====")
 
-user_input = input("\nHow can I help you? ")
-uploaded_file_path = "./data/uploads/screenshot.png"
-result = invoke_graph({
-    "user_input": user_input,
-    "uploaded_file": uploaded_file_path
-})
+# user_input = input("\nHow can I help you? ")
+# uploaded_file_path = "./data/uploads/screenshot.png"
+# result = invoke_graph({
+#     "user_input": user_input,
+#     "uploaded_file": uploaded_file_path
+# })
 
-print("\n ===== MAIN RESULT =====")
-print("\n messages: ", result)
+# print("\n ===== MAIN RESULT =====")
+# print("\n messages: ", result)

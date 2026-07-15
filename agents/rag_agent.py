@@ -1,6 +1,7 @@
 from agent_state.agent_state import AgentState
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 
+# rag_agent - Added as node in supervisor agent graph
 def rag_agent(state: AgentState) -> AgentState:
     """Use this agent for RAG - reasoning based on file content"""
     print("\n===== RAG AGENT =====")

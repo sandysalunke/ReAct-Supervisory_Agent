@@ -1,6 +1,7 @@
 from agent_state.agent_state import AgentState
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 
+# excel_agent - Added as node in supervisor agent graph
 def excel_agent(state: AgentState) -> AgentState:
     """Use this agent for excel analytics"""
     print("\n===== EXCEL AGENT =====")
