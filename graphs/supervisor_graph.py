@@ -1,3 +1,4 @@
+from typing import Optional, Annotated
 from agent_state.agent_state import AgentState
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
@@ -5,10 +6,12 @@ from agents import chat_agent, rag_agent, sql_agent, ocr_agent, meeting_agent, i
 from nodes.router import route_agent
 from nodes.planner import create_pan
 
-def invoke_graph(prompt: str) -> AgentState:
-    
+def invoke_graph(request: Annotated) -> AgentState:
+    prompt = request["user_input"]
+    uploaded_file = request["uploaded_file"]
+
     # Create execution plan for user input
-    execution_plan = create_pan(prompt)
+    execution_plan = create_pan(request["user_input"])
     print("========execution_plan=====", execution_plan)
     
     # Initiate a graph
@@ -69,6 +72,7 @@ def invoke_graph(prompt: str) -> AgentState:
     result  = app.invoke(
         {
             "user_input": prompt,
+            "uploaded_file": uploaded_file,
             "execution_plan": execution_plan
         }
     )

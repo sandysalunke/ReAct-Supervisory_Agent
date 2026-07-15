@@ -18,7 +18,7 @@ def generate_image(state: AgentState):
 
     img_base64 = base64.b64decode(result.data[0].b64_json)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"./images/{timestamp}.png"
+    filename = f"./data/images/{timestamp}.png"
     if img_base64:
         with open(filename, "wb") as f:
             f.write(img_base64)
