@@ -5,7 +5,7 @@ def rag_agent(state: AgentState) -> AgentState:
     """Use this agent for RAG - reasoning based on file content"""
     print("\n===== RAG AGENT =====")
 
-    response = "The file refers to the story of a king"
+    response = "The file refers to the story of a king. What is the average revenue?"
     
     # Add Agent result to agent_result list in agentState
     agent_result_AIMessage = AIMessage(content=response)

@@ -29,13 +29,14 @@ def create_pan(prompt: str) -> dict:
         Rules:
             1. Determine the tasks required to achieve user goal.
             2. Assign unique ids.
-            3. Specify dependencies.
-            4. Tasks that can run in parallel must have empty dependencies.
-            5. Do not include markup
-            6. Return JSON only.
-            7. If the user goal can be fulfilled directly by a single available intent, return a workflow DAG containing exactly one task.
-            8. Do not create unnecessary intermediate tasks.
-            9. Use chat directly for general knowledge questions that do not require
+            3. Specify the prompt
+            4. Specify dependencies.
+            5. Tasks that can run in parallel must have empty dependencies.
+            6. Do not include markup
+            7. Return JSON only.
+            8. If the user goal can be fulfilled directly by a single available intent, return a workflow DAG containing exactly one task.
+            9. Do not create unnecessary intermediate tasks.
+            10. Use chat directly for general knowledge questions that do not require
             database access, files, meetings, images, or spreadsheets.
         """
     
