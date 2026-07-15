@@ -22,6 +22,8 @@ def generate_image(state: AgentState):
     if img_base64:
         with open(filename, "wb") as f:
             f.write(img_base64)
+    else:
+        return "Sorry. I can not generate an image at the moment, please try again later"
 
     return filename
 
