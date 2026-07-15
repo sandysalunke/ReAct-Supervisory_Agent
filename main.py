@@ -1,9 +1,12 @@
 from graphs.supervisor_graph import invoke_graph
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 import streamlit as st
+from pathlib import Path
 
 # # Display chat
 # def display_chat():
+#     image_extensions = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
 #     for msg in st.session_state.chat_history:
         
 #         if isinstance(msg, HumanMessage):
@@ -11,8 +14,15 @@ import streamlit as st
 #             st.chat_message("user").write(msg.content)
 
 #         elif isinstance(msg, AIMessage):
-#             # print("AI:", msg.content)
-#             st.chat_message("assistant").write(msg.content)
+#             message = msg.content
+#             if (
+#                 Path(message).exists()
+#                 and Path(message).suffix.lower() in image_extensions
+#             ):
+#                 st.write("Here is your generated image:")
+#                 st.image(message, width=400)
+#             else:
+#                 st.chat_message("assistant").write(message)
 
 #         elif isinstance(msg, ToolMessage):
 #             # print("Tool:", msg.content)
