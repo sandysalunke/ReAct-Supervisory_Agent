@@ -34,7 +34,7 @@ def create_pan(prompt: str) -> dict:
             5. Tasks that can run in parallel must have empty dependencies.
             6. Do not include markup
             7. Return JSON only.
-            8. If the user goal can be fulfilled directly by a single available intent, return a workflow DAG containing exactly one task.
+            8. If the user goal can be fulfilled directly by a single available intent, return tasks DAG containing exactly one task.
             9. Do not create unnecessary intermediate tasks.
             10. Use chat directly for general knowledge questions that do not require
             database access, files, meetings, images, or spreadsheets.

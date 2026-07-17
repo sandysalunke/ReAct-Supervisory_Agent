@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 import hashlib
+import pandas as pd
 from langchain_core.documents import Document
 from unstructured.partition.auto import partition
 
@@ -20,8 +21,8 @@ def save_uploaded_file(uploaded_file):
 
     return str(file_path)
 
-
 # Read the document and return content
+# this function cal load any text document E. Doc, PDF, txt etc.
 def load_document(file_path):
 
     elements = partition(filename=file_path)
@@ -52,3 +53,21 @@ def get_file_hash(file_path):
             sha256.update(chunk)
 
     return sha256.hexdigest()
+
+# Reads file from directory using file path
+def read_excel_file(file_path):
+    ext = Path(file_path).suffix.lower()
+
+    if ext == ".xlsx":
+        return pd.read_excel(file_path)
+
+    elif ext == ".csv":
+        return pd.read_csv(file_path)
+
+    else:
+        raise ValueError(f"Unsupported file type: {ext}")
+    
+# reads uploaded file binary
+def read_uploaded_excel_file(file_path):
+    if file_path.type in ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv"]:
+        return pd.read_excel(file_path) if file_path.type.endswith("sheet") else pd.read_csv(file_path)

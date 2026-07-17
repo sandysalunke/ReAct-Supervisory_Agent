@@ -19,9 +19,6 @@ def chat_agent(state: AgentState):
     
     response = llm.invoke(prompt)
 
-    # Add Agent result to agent_result list in agentState
-    agent_result_AIMessage = AIMessage(response.content)
-    
     return {
         "agent_result": [response.content],
         "completed_steps": ["chat"]
