@@ -3,13 +3,10 @@ from chromadb import PersistentClient
 from helpers.embeddings import AzureEmbeddingWrapper
 
 persist_directory = "./data/vectorDB"
-COLLECTION_NAME = "rag_docs"
 
 # Check if the collection aready exist in vector DB
 def collection_exists(collection_name: str):
-
     client = PersistentClient(path=persist_directory)
-
     try:
         client.get_collection(collection_name)
         return True
@@ -17,28 +14,29 @@ def collection_exists(collection_name: str):
         return False
 
 # Create embedings and store in vector SB
-def create_vector_store(chunks):
+def create_vector_store(collection_name, chunks):
     """
     Create embeddings and store them in Chroma.
     """
+
     vector_store = Chroma.from_documents(
         documents=chunks,
         embedding=AzureEmbeddingWrapper(),
         persist_directory=persist_directory,
-        collection_name = COLLECTION_NAME
+        collection_name = collection_name
     )
 
     return vector_store
 
 # Load the vector store
-def load_vector_store():
+def load_vector_store(collection_name):
     """
     Load an existing vector store.
     """
 
     return Chroma(
         persist_directory=persist_directory,
-        collection_name = COLLECTION_NAME,
+        collection_name = collection_name,
         embedding_function=AzureEmbeddingWrapper()
     )
 
