@@ -4,6 +4,9 @@ import streamlit as st
 from pathlib import Path
 from helpers import file_operations
 
+st.set_page_config(page_title="GenAI Copilot", layout="wide")
+st.title("🧠 GenAI Copilot")
+
 # Display chat
 def display_chat():
     image_extensions = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
@@ -86,7 +89,7 @@ if prompt:
 # print("\n ===== MAIN =====")
 
 # user_input = input("\nHow can I help you? ")
-# uploaded_file_path = "./data/uploads/screenshot.png"
+# uploaded_file_path = "./data/uploads/test.pdf"
 # result = invoke_graph({
 #     "user_input": user_input,
 #     "uploaded_file": uploaded_file_path

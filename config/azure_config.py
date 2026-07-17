@@ -1,6 +1,6 @@
 import os
 from openai import AzureOpenAI
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -23,6 +23,15 @@ client = AzureOpenAI(
 # Chat model wrapper for Azure-deployed OpenAI endpoints
 llm = AzureChatOpenAI(
     azure_deployment=CHAT_MODEL,
+    azure_endpoint=API_ENDPOINT,
+    api_key=AZURE_API_KEY,
+    api_version=API_VERSION,
+    temperature=0,
+    # timeout=3
+)
+
+embedding_LLM = AzureOpenAIEmbeddings(
+    azure_deployment=EMBED_MODEL,
     azure_endpoint=API_ENDPOINT,
     api_key=AZURE_API_KEY,
     api_version=API_VERSION,
