@@ -9,3 +9,5 @@ class AgentState(TypedDict):
     completed_steps: Annotated[list, add]
     agent_result: Annotated[list, add]
     messages: Annotated[list, add]
+    chat_history: list
+    

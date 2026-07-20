@@ -9,6 +9,7 @@ from nodes.planner import create_pan
 def invoke_graph(request: Annotated) -> AgentState:
     prompt = request["user_input"]
     uploaded_file = request["uploaded_file"]
+    chat_history = request["chat_history"]
 
     # Create execution plan for user input
     execution_plan = create_pan(request["user_input"])
@@ -73,7 +74,8 @@ def invoke_graph(request: Annotated) -> AgentState:
         {
             "user_input": prompt,
             "uploaded_file": uploaded_file,
-            "execution_plan": execution_plan
+            "execution_plan": execution_plan,
+            "chat_history": chat_history
         }
     )
     

@@ -13,10 +13,13 @@ def chat_agent(state: AgentState):
         
         Results from previous steps:
         {state.get("agent_result",[])}
+
+        Chat history:
+        {state.get("chat_history",[])}
         
-        Generate the next response considering all previous results.
+        Generate the next response considering all previous results and chat history.
     """
-    
+    print("=========prompt: ", prompt)
     response = llm.invoke(prompt)
 
     return {

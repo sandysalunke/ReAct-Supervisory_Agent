@@ -70,7 +70,8 @@ if prompt:
             # Invoke Agent
             result = invoke_graph({
                 "user_input": prompt,
-                "uploaded_file": st.session_state.uploaded_file_path
+                "uploaded_file": st.session_state.uploaded_file_path,
+                "chat_history": st.session_state.chat_history
             })
             
             # Append result to chat history 
