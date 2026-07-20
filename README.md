@@ -42,33 +42,46 @@
 ```python
 app/
 │
+├── agent_state/
+│   ├── agent_state.py
+│
 ├── agents/
 │   ├── chat_agent.py
 │   ├── image_agent.py
-│   ├── pdf_agent.py
+│   ├── rag_agent.py
 │   ├── sql_agent.py
 │   ├── ocr_agent.py
 │   ├── meeting_agent.py
 |   └── excel_agent.py
+|   └── summary_agent.py
+│
+├── cofig/
+│   └── azure_config.py
+│
+├── data/
+│   └── /images
+│   └── /uplaods
+│   └── /vectorDB
 │
 ├── graphs/
 │   └── supervisor_graph.py
 │
+├── helpers/
+│   ├── chunk_helper.py
+│   ├── embeddings.py
+│   ├── file_operations.py
+│   └── rag_helper.py
+│   └── SQLite.py
+│   └── vector_db.py
+│   └── createSQLiteMultipleTableDB.py (run thus file to create SQLite DB)
+│
+├── nodes/
+│   ├── classifier.py
+│   ├── planner.py
+│   ├── router.py
+│
 ├── tools/
-│   ├── search_tool.py
-│   ├── sql_tool.py
-│   ├── vector_tool.py
-│   └── ocr_tool.py
+│   └── excel_tools.py
 │
-├── memory/
-│   ├── redis_memory.py
-│   └── long_term_memory.py
-│
-├── api/
-│   └── fastapi_server.py
-│
-├── ui/
-│   └── react_app
-│
-└── storage/
+└── main.py
 ```
