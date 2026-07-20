@@ -4,7 +4,7 @@
 - Text chat
 - Image creation
 - Audio meeting assistant 
-- image to text conversion
+- Image to text conversion
 - Database search
 - Text reasoning based on uploaded PDF or any text file
 - Excel file analysis
