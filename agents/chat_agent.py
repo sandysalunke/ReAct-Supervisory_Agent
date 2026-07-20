@@ -18,7 +18,7 @@ def chat_agent(state: AgentState):
         
         Generate the next response considering all previous results and chat history.
     """
-    print("=========prompt: ", prompt)
+
     response = llm.invoke(prompt)
 
     return {
