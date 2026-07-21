@@ -91,9 +91,11 @@ if prompt:
 
 # user_input = input("\nHow can I help you? ")
 # uploaded_file_path = "./data/uploads/sample_sales_data.xlsx"
+# uploaded_file_path = "./data/uploads/test.ppt"
 # result = invoke_graph({
 #     "user_input": user_input,
-#     "uploaded_file": uploaded_file_path
+#     "uploaded_file": uploaded_file_path,
+#     "chat_history": []
 # })
 
 # print("\n ===== MAIN RESULT =====")

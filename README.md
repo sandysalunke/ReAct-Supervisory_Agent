@@ -1,13 +1,19 @@
 # Copilot like AI Agent
 
 ### Building a copilot like AI agent using Langgraph that can perform following operations. 
-- Text chat
+- Text reasoning/chat
 - Image creation
-- Audio meeting assistant 
-- Image to text conversion
-- Database search
-- Text reasoning based on uploaded PDF or any text file
-- Excel file analysis
+- Audio/meeting assistant
+- OCR - Image to text conversion
+- SQL Analytics
+- Multi-document RAG
+- Excel Analytics
+- PowerPoint agent
+
+### TBD:
+- Document Comparison Agent
+- Search from knowledgeBase - Multiple documents (RAG can be used to search across multiple collections OR vector DB)
+- Evaluation & Telemetry Dashboard (Agent accuracy)
 
 ### Architecture:
 ```python

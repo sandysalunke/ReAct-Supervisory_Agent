@@ -1,8 +1,7 @@
 from typing import Annotated
 from agent_state.agent_state import AgentState
 from langgraph.graph import StateGraph, START, END
-from agents import chat_agent, rag_agent, sql_agent, ocr_agent, meeting_agent, image_agent, excel_agent, summary_agent
-from nodes.router import route_agent
+from agents import chat_agent, rag_agent, sql_agent, ocr_agent, meeting_agent, image_agent, excel_agent, summary_agent, ppt_agent
 from nodes.planner import create_pan
 
 def invoke_graph(request: Annotated) -> AgentState:
@@ -26,6 +25,7 @@ def invoke_graph(request: Annotated) -> AgentState:
         "image_to_text": ocr_agent.ocr_agent,
         "meeting_assistant": meeting_agent.meeting_agent,
         "excel_analysis": excel_agent.excel_agent,
+        "ppt_creation": ppt_agent.ppt_agent
     }
 
     # Add independent nodes to graph 

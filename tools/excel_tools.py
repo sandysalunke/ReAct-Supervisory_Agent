@@ -76,7 +76,7 @@ def create_excel_tools(data_frame):
 
             - The final code MUST define:
 
-            chart_path = "./data/{uuid7()}.png"
+            chart_path = "./data/images/{uuid7()}.png"
 
             - Do NOT print anything
             - Do NOT explain anything

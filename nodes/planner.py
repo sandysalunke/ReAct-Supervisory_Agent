@@ -24,6 +24,8 @@ def create_pan(prompt: str) -> dict:
                 - Create images.
             meeting_assistant
                 - Handle meeting-related tasks.
+            ppt_creation
+                - Create powerpoint presentation deck
 
         Rules:
             1. Determine the tasks required to achieve user goal.
