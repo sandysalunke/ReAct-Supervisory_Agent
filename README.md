@@ -75,16 +75,17 @@ app/
 ├── helpers/
 │   ├── chunk_helper.py
 │   ├── embeddings.py
+│   ├── dependency_manager.py
 │   ├── file_operations.py
-│   └── rag_helper.py
-│   └── SQLite.py
-│   └── vector_db.py
+│   ├── rag_helper.py
+│   ├── SQLite.py
+│   ├── vector_db.py
 │   └── createSQLiteMultipleTableDB.py (run thus file to create SQLite DB)
 │
 ├── nodes/
 │   ├── classifier.py
 │   ├── planner.py
-│   ├── router.py
+│   └── router.py
 │
 ├── tools/
 │   └── excel_tools.py
