@@ -45,17 +45,25 @@ def meeting_agent(state: AgentState) -> AgentState:
     """Use this agent for meeting assistance"""
     print("\n===== MEETING AGENT =====")
 
-    file_path = state["uploaded_file"]
+    current_task = state.get("current_task", {})
+    file_path = state.get("uploaded_file", "")
     file_extension = Path(file_path).suffix
     file_extensions = { ".mp4", ".mkv", ".webm", ".avi", ".mov", ".wmv", ".m4v", ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".wma"}
+    file = Path(file_path)
 
-    if file_path and file_extension in file_extensions:
+    if file.is_file() and file_extension in file_extensions:
         transcript = transcribe_audio(file_path)
         result = process_meeting(transcript)
     else:
-        result = "I can not find the image, please upload the image to extract the text."
+        result = "I can not find the appropriate file, please try uploading a file again."
 
     return {
         "agent_result": [result],
-        "completed_steps": ["meeting_assistant"]
+        "completed_steps": ["meeting_assistant"],
+        "task_results": {
+            current_task["id"] : {
+                "intent": current_task["intent"],
+                "result": result
+            }
+        }
     }

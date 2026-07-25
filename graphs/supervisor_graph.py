@@ -1,8 +1,21 @@
+import json
 from typing import Annotated
 from agent_state.agent_state import AgentState
 from langgraph.graph import StateGraph, START, END
 from agents import chat_agent, rag_agent, sql_agent, ocr_agent, meeting_agent, image_agent, excel_agent, summary_agent, ppt_agent
 from nodes.planner import create_pan
+
+def create_task_node(agent_fn, task):
+
+    def node(state):
+
+        return agent_fn({
+            **state,
+            "current_task": task,
+            "task_prompt": task["prompt"],
+        })
+
+    return node
 
 def invoke_graph(request: Annotated) -> AgentState:
     prompt = request["user_input"]
@@ -10,8 +23,8 @@ def invoke_graph(request: Annotated) -> AgentState:
     chat_history = request["chat_history"]
 
     # Create execution plan for user input
-    execution_plan = create_pan(request["user_input"])
-    print("========execution_plan=====", execution_plan)
+    execution_plan = create_pan(prompt, uploaded_file)
+    print("EXECUTION PLAN: ", json.dumps(execution_plan, indent=2))
     
     # Initiate a graph
     graph = StateGraph(AgentState)
@@ -32,7 +45,10 @@ def invoke_graph(request: Annotated) -> AgentState:
     for task in execution_plan["tasks"]:
         graph.add_node(
             task["id"],
-            agent_mapp[task["intent"]]
+            create_task_node(
+                agent_mapp[task["intent"]],
+                task
+            )
         )
 
     # Add summary_agent node that will always be the last node of the workflow
@@ -78,6 +94,4 @@ def invoke_graph(request: Annotated) -> AgentState:
         }
     )
     
-    # print("=========STATE========: ", result)
-
     return result

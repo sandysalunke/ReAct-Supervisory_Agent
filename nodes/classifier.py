@@ -57,8 +57,6 @@ def classify_intent(state: AgentState) -> AgentState:
         Output exactly one intent name and nothing else.
         """
     
-    # print("======== Prompt: ", prompt)
-
     # Invoke LLM
     intent = llm.invoke(prompt).content
 

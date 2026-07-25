@@ -3,6 +3,7 @@ from helpers.file_operations import load_document, get_file_hash
 from helpers.chunk_helper import chunk_document
 from helpers.vector_db import create_vector_store, load_vector_store, retrieve_documents, collection_exists
 from helpers.rag_helper import generate_response
+from pathlib import Path
 
 # Injest document
 # - Read the content
@@ -45,21 +46,30 @@ def rag_agent(state: AgentState) -> AgentState:
     """Use this agent for RAG - reasoning based on file content"""
     print("\n===== RAG AGENT =====")
 
-    file_path = state["uploaded_file"]
-    user_input = state["user_input"]
+    user_input = state.get("user_input")
+    task_prompt = state.get("task_prompt", user_input)
+    current_task = state.get("current_task", {})
     result = "I can not find a document, please upload a document"
 
-    if file_path:
+    file_extensions = { ".txt", ".pdf", ".docx", ".doc", ".ppt", ".pptx"}
+    file_path = state.get("uploaded_file", "")
+    file_extension = Path(file_path).suffix
+
+    if file_path and file_extension in file_extensions:
         collection_name = get_file_hash(file_path)
 
         if not collection_exists(collection_name):
             ingest_document(file_path, collection_name)
 
-        result = answer_question(collection_name, user_input)
+        result = answer_question(collection_name, task_prompt)
         
-    print("\n===== result =====", result)
-
     return {
         "agent_result": [result],
-        "completed_steps": ["file_reasoning"]
+        "completed_steps": ["file_reasoning"],
+        "task_results": {
+            current_task["id"] : {
+                "intent": current_task["intent"],
+                "result": result
+            }
+        }
     }
