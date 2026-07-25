@@ -32,7 +32,7 @@
       |         |          |         |          |           |           |         |
       v         v          v         v          v           v           v         v
 +---------+ +--------+ +--------+ +--------+ +--------+ +--------+ +--------+ +--------+
-| Chat    | | Image  | | Audio  | | OCR    | | RAG    | | DB     | | Excel  | | PPT  |
+| Chat    | | Image  | | Audio  | | OCR    | | RAG    | | DB     | | Excel  | | PPT    |
 | Agent   | | Agent  | | Agent  | | Agent  | | Agent  | | Agent  | | Agent  | | Agent  |
 +---------+ +--------+ +--------+ +--------+ +--------+ +--------+ +--------+ +--------+
       |         |           |          |          |          |          |         |
