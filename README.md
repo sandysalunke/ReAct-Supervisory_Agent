@@ -3,7 +3,7 @@
 ### Building a copilot like AI agent using Langgraph that can perform following operations. 
 - Text reasoning/chat
 - Image creation
-- Audio/meeting assistant
+- Audio/meeting assistant - This uses ffmpeg to chunk large files
 - OCR - Image to text conversion
 - SQL Analytics
 - Multi-document RAG
@@ -11,6 +11,7 @@
 - PowerPoint agent
 
 ### TBD:
+- Compress and chunk meeting file after upload
 - Document Comparison Agent
 - Search from knowledgeBase - Multiple documents (RAG can be used to search across multiple collections OR vector DB)
 - Evaluation & Telemetry Dashboard (Agent accuracy)
@@ -28,7 +29,7 @@
                              |  Supervisor Agent|
                              +---------+--------+
                                        |
-      ----------------------------------------------------------------------------
+      -----------------------------------------------------------------------------
       |         |          |         |          |           |           |         |
       v         v          v         v          v           v           v         v
 +---------+ +--------+ +--------+ +--------+ +--------+ +--------+ +--------+ +--------+
@@ -92,3 +93,19 @@ app/
 │
 └── main.py
 ```
+
+### Sample Prompts:
+Excel + SQL + Chat
+Compare the region-wise revenue from the uploaded Excel report with the system records. Identify discrepancies, explain the likely causes, and summarize the findings.
+
+Excel + SQL + Chart + PowerPoint
+Analyze revenue trends from the uploaded Excel report and compare them with system records. Create visualizations for major variances and generate an executive PowerPoint presentation summarizing your findings.
+
+Meeting Audio + Action Items + PowerPoint
+Analyze the uploaded meeting recording, extract all action items with owners and due dates, identify key risks discussed, and create a management presentation.
+
+OCR + RAG + Summary
+Extract the text from the image, compare it with the uploaded policy document, identify inconsistencies, and provide a summary.
+
+Image + PowerPoint
+Generate a professional infographic showing AI adoption trends and then create a 5-slide executive presentation explaining the infographic.

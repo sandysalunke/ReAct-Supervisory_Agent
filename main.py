@@ -94,9 +94,9 @@ else:
     print("\n ===== MAIN =====")
 
     user_input = input("\nHow can I help you? ")
-    uploaded_file_path = "./data/uploads/sample_sales_data.xlsx"
+    # uploaded_file_path = "./data/uploads/sample_sales_data.xlsx"
     # uploaded_file_path = "./data/uploads/test.ppt"
-    # uploaded_file_path = "./data/uploads/test.mp4"
+    uploaded_file_path = "./data/uploads/test2.mp4"
     result = invoke_graph({
         "user_input": user_input,
         "uploaded_file": uploaded_file_path,

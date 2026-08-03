@@ -1,15 +1,53 @@
 from agent_state.agent_state import AgentState
 from pathlib import Path
 from config.azure_config import client, CHAT_MODEL, WHISPER_MODEL
+import glob
+import imageio_ffmpeg
+import os
+import subprocess
+
+def chunk_audio_file(file_path):
+    file_size = os.path.getsize(file_path)
+    MAX_SIZE = 25 * 1024 * 1024
+    
+    if file_size <= MAX_SIZE:
+        return [file_path]
+
+    chunks = []
+    try:
+        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        subprocess.run([
+            ffmpeg,
+            "-i", file_path,
+            "-vn",
+            "-f", "segment",
+            "-segment_time", "300",
+            "-c:a", "libmp3lame",
+            "./data/uploads/audio/chunk_%03d.mp3"
+        ], check=True)
+        chunks = sorted(glob.glob("./data/uploads/audio/chunk_*.mp3"))
+    except Exception:
+        import traceback
+        traceback.print_exc()
+            
+    return chunks
 
 # Whisper LLM to read transcript
 def transcribe_audio(file_path):
-    with open(file_path, "rb") as audio_file:
-        transcript = client.audio.transcriptions.create(
-            file=audio_file,
-            model=WHISPER_MODEL   # or your Azure deployment name
+    chunks = chunk_audio_file(file_path)
+    transcripts = []
+
+    for chunk_file in chunks:
+
+        response = client.audio.transcriptions.create(
+            model=WHISPER_MODEL,
+            file=open(chunk_file, "rb")
         )
-    return transcript.text
+
+        transcripts.append(response.text)
+
+    full_transcript = "\n".join(transcripts)
+    return full_transcript
 
 # LLM to process transcript and return structured response 
 def process_meeting(transcript):
