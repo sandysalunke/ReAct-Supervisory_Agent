@@ -11,6 +11,8 @@ def summary_agent(state: AgentState) -> AgentState:
 
     return {
         "messages": [human_message, ai_response_message],
-        "completed_steps": ["summarize_result"]
+        "completed_steps": ["summarize_result"],
+        "thread_id": state["thread_id"],
+        "workflow_status": "COMPLETED",
     }
     

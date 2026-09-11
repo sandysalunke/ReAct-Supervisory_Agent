@@ -1,6 +1,7 @@
 import json
 from config.azure_config import llm
 from agent_state.agent_state import AgentState
+from langgraph.types import interrupt
 from helpers.dependency_manager import get_dependency_results
 
 # chat_agent - Added as node in supervisor agent graph
@@ -31,11 +32,17 @@ def chat_agent(state: AgentState):
 
     response = llm.invoke(prompt)
 
+    if state.get("human_comment"):
+        comment = state["human_comment"]
+    else:
+        comment = interrupt("Should I continue?")
+        
     return {
+        "human_comment": comment,
         "agent_result": [response.content],
         "completed_steps": ["chat"],
         "task_results": {
-            current_task["id"] : {
+            current_task["id"]: {
                 "intent": current_task["intent"],
                 "result": response.content
             }

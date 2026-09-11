@@ -11,10 +11,11 @@
 - PowerPoint agent
 
 ### TBD:
-- Compress and chunk meeting file after upload
 - Document Comparison Agent
 - Search from knowledgeBase - Multiple documents (RAG can be used to search across multiple collections OR vector DB)
 - Evaluation & Telemetry Dashboard (Agent accuracy)
+- Human in the loop
+- 
 
 ### Architecture:
 ```python

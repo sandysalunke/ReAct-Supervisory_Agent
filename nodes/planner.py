@@ -1,7 +1,9 @@
 from config.azure_config import llm
 import json
+import os
+from pathlib import Path
 
-def create_pan(prompt: str, uploaded_file: str) -> dict:
+def create_plan(thread_id: str, prompt: str, uploaded_file: str) -> dict:
     
     prompt = f"""
         Create a workflow DAG.
@@ -54,5 +56,46 @@ def create_pan(prompt: str, uploaded_file: str) -> dict:
 
     execution_plan = json.loads(result)
 
+    save_execution_plan(thread_id, execution_plan)  # Save the execution plan for the thread
+
     return execution_plan
 
+def save_execution_plan(thread_id: str, execution_plan: dict):
+    """
+    Save execution plan for a thread.
+    """
+
+    file_path = f"./data/plan/{thread_id}.json"
+
+    data = {
+        "thread_id": thread_id,
+        "execution_plan": execution_plan
+    }
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
+
+def get_execution_plan(thread_id: str):
+    """
+    Retrieve execution plan for a thread.
+    """
+
+    file_path = Path(f"./data/plan/{thread_id}.json")
+
+    if not file_path.exists():
+        return None
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    return data.get("execution_plan")
+
+def delete_execution_plan(thread_id: str):
+    """
+    Delete execution plan after workflow completion.
+    """
+
+    file_path = f"./data/plan/{thread_id}.json"
+
+    if file_path.exists():
+        os.remove(file_path)

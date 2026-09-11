@@ -1,4 +1,5 @@
-from graphs.supervisor_graph import invoke_graph
+# from graphs.supervisor_graph import invoke_graph
+from graphs.supervisor_graph_copy import WorkflowService
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 import streamlit as st
 from pathlib import Path
@@ -18,7 +19,6 @@ if is_streamlit_app:
         for msg in st.session_state.chat_history:
             
             if isinstance(msg, HumanMessage):
-                # print("Human:", msg.content)
                 st.chat_message("user").write(msg.content)
 
             elif isinstance(msg, AIMessage):
@@ -33,11 +33,9 @@ if is_streamlit_app:
                     st.chat_message("assistant").write(message)
 
             elif isinstance(msg, ToolMessage):
-                # print("Tool:", msg.content)
                 st.chat_message("Tool").write(msg.content)
 
             elif isinstance(msg, SystemMessage):
-                # print("System:", msg.content)
                 st.chat_message("System").write(msg.content)
 
     # Initialize chat history in session_state
@@ -71,16 +69,33 @@ if is_streamlit_app:
 
         with spinner_placeholder:
             with st.spinner("Thinking..."):
-                # Invoke Agent
-                result = invoke_graph({
-                    "user_input": prompt,
-                    "uploaded_file": st.session_state.uploaded_file_path,
-                    "chat_history": st.session_state.chat_history
-                })
-                
+                if (st.session_state.chat_history and st.session_state.chat_history[-1].additional_kwargs.get("workflow_status") == "INTERRUPTED"):
+                    thread_id = st.session_state.chat_history[-1].additional_kwargs.get("thread_id")
+                    # Resume Agent
+                    request = {
+                        "thread_id": thread_id,
+                        "workflow_status": "INTERRUPTED",
+                        "user_input": prompt,
+                        "uploaded_file": st.session_state.uploaded_file_path,
+                        "chat_history": st.session_state.chat_history
+                    }
+                    workflow_service = WorkflowService(request)
+                    result = workflow_service.resume(prompt, thread_id)
+                else:
+                    # Invoke Agent
+                    request = {
+                        "user_input": prompt,
+                        "uploaded_file": st.session_state.uploaded_file_path,
+                        "chat_history": st.session_state.chat_history
+                    }
+                    workflow_service = WorkflowService(request)
+                    result = workflow_service.invoke(
+                        request
+                    )
+            
                 # Append result to chat history 
-                st.session_state.chat_history = st.session_state.chat_history + result["messages"]
-        
+                st.session_state.chat_history = st.session_state.chat_history + result["data"]["messages"]
+    
         # Clear spinner (optional)
         spinner_placeholder.empty()
         
@@ -97,11 +112,15 @@ else:
     # uploaded_file_path = "./data/uploads/sample_sales_data.xlsx"
     # uploaded_file_path = "./data/uploads/test.ppt"
     uploaded_file_path = "./data/uploads/test2.mp4"
-    result = invoke_graph({
+    request = {
         "user_input": user_input,
         "uploaded_file": uploaded_file_path,
         "chat_history": []
-    })
-
+    }
+    workflow_service = WorkflowService(request)
+    
+    result = workflow_service.invoke(
+        request
+    )
     print("\n ===== MAIN RESULT =====")
     print("\n messages: ", result)

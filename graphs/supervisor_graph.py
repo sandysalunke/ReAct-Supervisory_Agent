@@ -1,97 +1,179 @@
+
+####################################
 import json
 from typing import Annotated
 from agent_state.agent_state import AgentState
+from langgraph.types import interrupt, Command
 from langgraph.graph import StateGraph, START, END
 from agents import chat_agent, rag_agent, sql_agent, ocr_agent, meeting_agent, image_agent, excel_agent, summary_agent, ppt_agent
-from nodes.planner import create_pan
+from nodes.planner import create_plan, get_execution_plan
+from langchain_core.utils.uuid import uuid7
+from langgraph.checkpoint.memory import MemorySaver
+from langchain_core.messages import SystemMessage, HumanMessage
 
-def create_task_node(agent_fn, task):
+####################################
+# This variable to be replaced with a persistent checkpointer in future. Currently, 
+# it is a memory checkpointer that will be lost when the server restarts.
+GLOBAL_CHECKPOINTER = MemorySaver()
 
-    def node(state):
+class WorkflowService:
 
-        return agent_fn({
-            **state,
-            "current_task": task,
-            "task_prompt": task["prompt"],
-        })
+    request: Annotated
+    execution_plan: Annotated
+    thread_id: str
 
-    return node
+    ###############################################
+    def __init__(self, request: Annotated):
+        self.request = request
+        self.thread_id = self.thread_id = self.request.get("thread_id") or str(uuid7())
+        self.checkpointer = GLOBAL_CHECKPOINTER
+        self.graph = self.build_graph()
 
-def invoke_graph(request: Annotated) -> AgentState:
-    prompt = request["user_input"]
-    uploaded_file = request["uploaded_file"]
-    chat_history = request["chat_history"]
-
-    # Create execution plan for user input
-    execution_plan = create_pan(prompt, uploaded_file)
-    print("EXECUTION PLAN: ", json.dumps(execution_plan, indent=2))
+    ###############################################
+    def build_graph(self) -> AgentState:
+        prompt = self.request["user_input"]
+        uploaded_file = self.request["uploaded_file"]
+        chat_history = self.request["chat_history"]
     
-    # Initiate a graph
-    graph = StateGraph(AgentState)
-
-    # Map of agents linked to intent returned by planner in execution plan
-    agent_mapp = {
-        "chat": chat_agent.chat_agent,
-        "image_generation": image_agent.image_agent,
-        "file_reasoning": rag_agent.rag_agent,
-        "database_search": sql_agent.sql_agent,
-        "image_to_text": ocr_agent.ocr_agent,
-        "meeting_assistant": meeting_agent.meeting_agent,
-        "excel_analysis": excel_agent.excel_agent,
-        "ppt_creation": ppt_agent.ppt_agent
-    }
-
-    # Add independent nodes to graph 
-    for task in execution_plan["tasks"]:
-        graph.add_node(
-            task["id"],
-            create_task_node(
-                agent_mapp[task["intent"]],
-                task
-            )
-        )
-
-    # Add summary_agent node that will always be the last node of the workflow
-    graph.add_node("summarize_result", summary_agent.summary_agent)
-
-    # Add edges to the graph
-    for task in execution_plan["tasks"]:
-        if not task["dependencies"]:
-            graph.add_edge(START, task["id"])   # adds edges next to start (this could add parellel nodes)
-
-        for dep in task["dependencies"]:
-            graph.add_edge(dep, task["id"])     # adds edges to link dependent nodes
-
-    # Add edges from NON Dependent nodes to summary_agent
-    all_task_ids = {t["id"] for t in execution_plan["tasks"]}
-
-    dependency_ids = {
-        dep
-        for t in execution_plan["tasks"]
-        for dep in t["dependencies"]
-    }
-
-    leaf_nodes = all_task_ids - dependency_ids
-
-    for leaf in leaf_nodes:
-        graph.add_edge(leaf, "summarize_result")    # All leaf nodes are linked to summary_agent
-
-    # Add edge from summary_agent to END
-    graph.add_edge("summarize_result", END)
-
-    # Compile graph
-    app = graph.compile()
-
-    # display(Image(app.get_graph().draw_mermaid_png(max_retries=5)))
-    app.get_graph().print_ascii()
-
-    result  = app.invoke(
-        {
-            "user_input": prompt,
-            "uploaded_file": uploaded_file,
-            "execution_plan": execution_plan,
-            "chat_history": chat_history
+        # Create execution plan for user input
+        if self.request.get("workflow_status") == "INTERRUPTED":
+            self.execution_plan = get_execution_plan(self.thread_id)
+        else:
+            self.execution_plan = create_plan(self.thread_id, prompt, uploaded_file)
+        print("EXECUTION PLAN: ", json.dumps(self.execution_plan, indent=2))
+        
+        # Initiate a graph
+        graph = StateGraph(AgentState)
+    
+        # Map of agents linked to intent returned by planner in execution plan
+        agent_mapp = {
+            "chat": chat_agent.chat_agent,
+            "image_generation": image_agent.image_agent,
+            "file_reasoning": rag_agent.rag_agent,
+            "database_search": sql_agent.sql_agent,
+            "image_to_text": ocr_agent.ocr_agent,
+            "meeting_assistant": meeting_agent.meeting_agent,
+            "excel_analysis": excel_agent.excel_agent,
+            "ppt_creation": ppt_agent.ppt_agent
         }
-    )
     
-    return result
+        # Add independent nodes to graph 
+        for task in self.execution_plan["tasks"]:
+            graph.add_node(
+                task["id"],
+                self.create_task_node(
+                    agent_mapp[task["intent"]],
+                    task
+                )
+            )
+    
+        # Add summary_agent node that will always be the last node of the workflow
+        graph.add_node("summarize_result", summary_agent.summary_agent)
+    
+        # Add edges to the graph
+        for task in self.execution_plan["tasks"]:
+            if not task["dependencies"]:
+                graph.add_edge(START, task["id"])   # adds edges next to start (this could add parellel nodes)
+    
+            for dep in task["dependencies"]:
+                graph.add_edge(dep, task["id"])     # adds edges to link dependent nodes
+    
+        # Add edges from NON Dependent nodes to summary_agent
+        all_task_ids = {t["id"] for t in self.execution_plan["tasks"]}
+    
+        dependency_ids = {
+            dep
+            for t in self.execution_plan["tasks"]
+            for dep in t["dependencies"]
+        }
+    
+        leaf_nodes = all_task_ids - dependency_ids
+    
+        for leaf in leaf_nodes:
+            graph.add_edge(leaf, "summarize_result")    # All leaf nodes are linked to summary_agent
+    
+        # Add edge from summary_agent to END
+        graph.add_edge("summarize_result", END)
+    
+        # Compile graph
+        app = graph.compile(checkpointer=self.checkpointer)
+    
+        # display(Image(app.get_graph().draw_mermaid_png(max_retries=5)))
+        app.get_graph().print_ascii()
+
+        return app
+
+    ##############################################
+    # function to create a task node for the graph
+    def create_task_node(self, agent_fn, task):
+
+        def node(state):
+
+            return agent_fn({
+                **state,
+                "current_task": task,
+                "task_prompt": task["prompt"],
+            })
+
+        return node
+
+    ##############################################
+    # function to invoke the graph with input data and thread_id
+    def invoke(self, input_data):
+        print("----Graph Invoked----")
+        result = self.graph.invoke(
+            {
+                **input_data,
+                "thread_id": self.thread_id,
+                "execution_plan": self.execution_plan
+            },
+            config={
+                "configurable": {
+                    "thread_id": self.thread_id
+                }
+            }
+        )
+        return self._build_response(self.thread_id, result)
+
+    ##############################################
+    # function to resume the graph with user response and thread_id
+    def resume(self, user_response, thread_id):
+        print("----Graph Resumed----")
+
+        result = self.graph.invoke(
+            Command(resume=user_response),
+            config={
+                "configurable": {
+                    "thread_id": thread_id
+                }
+            }
+        )
+        return self._build_response(thread_id, result)
+
+    ##############################################
+    def _build_response(self, thread_id, result):
+
+        if "__interrupt__" in result:
+            return {
+                "thread_id": thread_id,
+                "workflow_status": "INTERRUPTED",
+                "interrupt": result["__interrupt__"],
+                "data": {
+                    "messages": [
+                        HumanMessage(content=self.request["user_input"]),
+                        SystemMessage(
+                            content=result["__interrupt__"][0].value,
+                            additional_kwargs={
+                                "thread_id": thread_id,
+                                "workflow_status": "INTERRUPTED"
+                            }
+                        )
+                    ]
+                }
+            }
+
+        return {
+            "thread_id": thread_id,
+            "workflow_status": "COMPLETED",
+            "data": result
+        }
