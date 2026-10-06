@@ -1,11 +1,10 @@
-
 ####################################
 import json
 from typing import Annotated
 from agent_state.agent_state import AgentState
 from langgraph.types import interrupt, Command
 from langgraph.graph import StateGraph, START, END
-from agents import chat_agent, rag_agent, sql_agent, ocr_agent, meeting_agent, image_agent, excel_agent, summary_agent, ppt_agent
+from agents import chat_agent, hybrid_rag_agent, rag_agent, sql_agent, ocr_agent, meeting_agent, image_agent, excel_agent, summary_agent, ppt_agent
 from nodes.planner import create_plan, get_execution_plan
 from langchain_core.utils.uuid import uuid7
 from langgraph.checkpoint.memory import MemorySaver
@@ -23,6 +22,7 @@ class WorkflowService:
     thread_id: str
 
     ###############################################
+    # function to initialize the WorkflowService with request data and build the graph
     def __init__(self, request: Annotated):
         self.request = request
         self.thread_id = self.thread_id = self.request.get("thread_id") or str(uuid7())
@@ -30,6 +30,7 @@ class WorkflowService:
         self.graph = self.build_graph()
 
     ###############################################
+    # function to build the graph based on the execution plan
     def build_graph(self) -> AgentState:
         prompt = self.request["user_input"]
         uploaded_file = self.request["uploaded_file"]
@@ -50,6 +51,7 @@ class WorkflowService:
             "chat": chat_agent.chat_agent,
             "image_generation": image_agent.image_agent,
             "file_reasoning": rag_agent.rag_agent,
+            "knowledge_search": hybrid_rag_agent.hybrid_rag_agent,
             "database_search": sql_agent.sql_agent,
             "image_to_text": ocr_agent.ocr_agent,
             "meeting_assistant": meeting_agent.meeting_agent,
@@ -139,6 +141,7 @@ class WorkflowService:
     # function to resume the graph with user response and thread_id
     def resume(self, user_response, thread_id):
         print("----Graph Resumed----")
+        
 
         result = self.graph.invoke(
             Command(resume=user_response),
@@ -151,9 +154,11 @@ class WorkflowService:
         return self._build_response(thread_id, result)
 
     ##############################################
+    # function to build the response based on the result of the graph execution
     def _build_response(self, thread_id, result):
 
         if "__interrupt__" in result:
+            print("===========Inturrupt==========")
             return {
                 "thread_id": thread_id,
                 "workflow_status": "INTERRUPTED",

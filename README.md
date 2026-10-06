@@ -7,15 +7,17 @@
 - OCR - Image to text conversion
 - SQL Analytics
 - Multi-document RAG
+- Hybrid RAG - Using Azure Search (Keyword + Vector)
 - Excel Analytics
 - PowerPoint agent
+- Human in the loop (In Chat Agent)
 
 ### TBD:
 - Document Comparison Agent
-- Search from knowledgeBase - Multiple documents (RAG can be used to search across multiple collections OR vector DB)
+
+#### Hybrid RAG pipeline:
+- Cache RAG responses for better user experience
 - Evaluation & Telemetry Dashboard (Agent accuracy)
-- Human in the loop
-- 
 
 ### Architecture:
 ```python

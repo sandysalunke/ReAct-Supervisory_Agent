@@ -16,12 +16,21 @@ def create_plan(thread_id: str, prompt: str, uploaded_file: str) -> dict:
         
         AVAILABLE INTENTS:
             chat
-                - Public knowledge, General Knowledge, Generate explanations, summaries, recommendations, or final responses.
+                - General/public knowledge that is NOT organization-specific.
+                - Conversational and generative requests such as writing, rewriting, brainstorming, explanations, and recommendations.
+                - Do NOT use for questions about organizational policies, responsibilities, procedures, processes, standards, products
+                or internal documentation.
+                - When uncertain between chat and knowledge_base for a factual question, choose knowledge_base.
             database_search
-                - Retrieve data from databases.
+                - Retrieve data from database.
             file_reasoning
                 - Reasoning based on uploaded text file content.
-                - Allowed file extensions: ".txt", ".pdf", ".docx", ".doc", ".ppt", ".pptx" 
+                - Allowed file extensions: ".txt", ".pdf", ".docx", ".doc", ".ppt", ".pptx"
+            knowledge_search
+                - A user does NOT need to explicitly mention "enterprise knowledge", "knowledge base", "company documents", or "search".
+                - Questions asking about organizational responsibilities, ownership, policies, procedures, processes, standards, products, business rules, internal terminology, or "who is responsible for X" should be treated as enterprise knowledge questions unless the user explicitly refers to an uploaded file.
+                - For ambiguous factual questions that could reasonably refer to the user's organization, prefer knowledge_base over chat.
+                - Use chat only when the question is clearly general/public knowledge or is a generative/conversational task.
             excel_analysis
                 - Analyze uploaded spreadsheet/excel data.
                 - Allowed file extensions: ".xls", ".xlsx", ".xlm", ".xlsb"
