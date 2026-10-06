@@ -14,8 +14,6 @@
 
 ### TBD:
 - Document Comparison Agent
-
-#### Hybrid RAG pipeline:
 - Cache RAG responses for better user experience
 - Evaluation & Telemetry Dashboard (Agent accuracy)
 
