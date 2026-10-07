@@ -14,8 +14,10 @@
 
 ### TBD:
 - Document Comparison Agent
-- Cache RAG responses for better user experience
+- Semantic cache - RAG responses for better user experience
+- RBAC for hybrid RAG pipeline
 - Evaluation & Telemetry Dashboard (Agent accuracy)
+- Observability + tracing
 
 ### Architecture:
 ```python

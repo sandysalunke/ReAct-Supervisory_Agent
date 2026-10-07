@@ -8,6 +8,12 @@ from helpers.hybrid_rag_helper import generate_response
 
 load_dotenv()
 
+# RBAC - Filter by allowed user groups
+# user_groups = "Business,Executives"
+# user_groups = "HR,Manager"
+user_groups = "Employees"
+# user_groups = "Engineering,Architect,Developers"
+
 # Configuration
 endpoint = os.getenv("AZURE_SEARCH_ENDPOINT")
 index_name = os.getenv("AZURE_SEARCH_INDEX")
@@ -31,6 +37,7 @@ def hybrid_search(question: str, top: int = 5):
     results = search_client.search(
         search_text=question,
         vector_queries=[vector_query],
+        filter= f"allowed_user_groups eq '{user_groups}'",
         query_type="semantic",
         semantic_configuration_name="knowledge-base-search-semantic-configuration",
         select=[
@@ -46,16 +53,15 @@ def hybrid_search(question: str, top: int = 5):
 # rag_agent - Added as node in supervisor agent graph
 def hybrid_rag_agent(state: AgentState) -> AgentState:
     """Use this agent for RAG - reasoning based on file content"""
-    print("\n===== RAG AGENT =====")
+    print("\n===== AZURE AI SEARCH AGENT =====")
 
     user_input = state.get("user_input")
     task_prompt = state.get("task_prompt", user_input)
     current_task = state.get("current_task", {})
-    result = "I could not find this information in the knowledge base."
 
     top5chunks = hybrid_search(task_prompt)
 
-    result = generate_response(task_prompt, top5chunks)
+    result = generate_response(task_prompt, top5chunks, user_groups)
 
     return {
         "agent_result": [result],

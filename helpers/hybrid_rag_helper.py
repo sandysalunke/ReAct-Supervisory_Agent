@@ -1,4 +1,5 @@
 from config.azure_config import llm
+from .llm_cache import get_cached_response, set_cached_response
 
 # Build the context from top 5 chunks retrieved from hybrid search
 # Join the chunks and return the context
@@ -22,7 +23,8 @@ def build_context_hybrid_search(top5chunks):
 # Uses LLM along with context and user prompt  
 def generate_response(
     query: str,
-    top5chunks
+    top5chunks,
+    user_groups
 ):
     """
     Generate an answer using retrieved chunks.
@@ -31,7 +33,21 @@ def generate_response(
     context = build_context_hybrid_search(top5chunks)
 
     prompt = f"""
-        Use the provided context to answer the question.
+        You are an enterprise knowledge assistant.
+
+        Answer the user's question using ONLY the supplied
+        knowledge base context.
+
+        Citation rules:
+
+        1. Cite factual statements using the source identifier provided
+        in the context, for example [1] or [2].
+        2. Do not invent source identifiers.
+        3. Only cite a source when that source supports the claim.
+        4. Multiple sources can be cited as [1][2].
+        5. Do not create a Sources section yourself.
+        6. If the answer isn't supported by the supplied context, say:
+        "I could not find this information in the knowledge base."
 
         Context:
         {context}
@@ -40,6 +56,18 @@ def generate_response(
         {query}
     """
 
-    response = llm.invoke(prompt)
+    # Check cache first
+    cached = get_cached_response(query, context, user_groups)
+    if cached is not None:
+        return cached
 
-    return response.content
+    response = llm.invoke(prompt)
+    content = response.content
+
+    # Cache the LLM output for future identical requests
+    try:
+        set_cached_response(query, context, content, user_groups)
+    except Exception:
+        pass
+
+    return content
