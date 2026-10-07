@@ -8,6 +8,7 @@
 - SQL Analytics
 - Multi-document RAG
 - Hybrid RAG - Using Azure Search (Keyword + Vector)
+      Refer this [video](https://www.youtube.com/watch?v=yu4M7OKjnR4) for Azure AI setup 
 - Excel Analytics
 - PowerPoint agent
 - Human in the loop (In Chat Agent)
