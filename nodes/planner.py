@@ -54,6 +54,8 @@ def create_plan(thread_id: str, prompt: str, uploaded_file: str) -> dict:
             - Tasks that can run in parallel must have empty dependencies.
             - Do not include markup
             - Return JSON only.
+            - Do NOT wrap the JSON in ```json or ``` code fences. 
+            - Do not include explanations, markdown, or any text outside the JSON object.
             - If the user goal can be fulfilled directly by a single available intent, return tasks DAG containing exactly one task.
             - Do not create unnecessary intermediate tasks.
             - Use chat directly for general knowledge questions that do not require

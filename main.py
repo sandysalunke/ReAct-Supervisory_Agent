@@ -1,4 +1,4 @@
-# from graphs.supervisor_graph import invoke_graph
+from utils.tracing import tracer
 from graphs.supervisor_graph import WorkflowService
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 import streamlit as st
@@ -69,32 +69,33 @@ if is_streamlit_app:
 
         with spinner_placeholder:
             with st.spinner("Thinking..."):
-                if (st.session_state.chat_history and st.session_state.chat_history[-1].additional_kwargs.get("workflow_status") == "INTERRUPTED"):
-                    thread_id = st.session_state.chat_history[-1].additional_kwargs.get("thread_id")
-                    # Resume Agent
-                    request = {
-                        "thread_id": thread_id,
-                        "workflow_status": "INTERRUPTED",
-                        "user_input": prompt,
-                        "uploaded_file": st.session_state.uploaded_file_path,
-                        "chat_history": st.session_state.chat_history
-                    }
-                    workflow_service = WorkflowService(request)
-                    result = workflow_service.resume(prompt, thread_id)
-                else:
-                    # Invoke Agent
-                    request = {
-                        "user_input": prompt,
-                        "uploaded_file": st.session_state.uploaded_file_path,
-                        "chat_history": st.session_state.chat_history
-                    }
-                    workflow_service = WorkflowService(request)
-                    result = workflow_service.invoke(
-                        request
-                    )
-            
-                # Append result to chat history 
-                st.session_state.chat_history = st.session_state.chat_history + result["data"]["messages"]
+                with tracer.start_as_current_span("User workflow", attributes={"user.workflow": "Begins"}):
+                    if (st.session_state.chat_history and st.session_state.chat_history[-1].additional_kwargs.get("workflow_status") == "INTERRUPTED"):
+                        thread_id = st.session_state.chat_history[-1].additional_kwargs.get("thread_id")
+                        # Resume Agent
+                        request = {
+                            "thread_id": thread_id,
+                            "workflow_status": "INTERRUPTED",
+                            "user_input": prompt,
+                            "uploaded_file": st.session_state.uploaded_file_path,
+                            "chat_history": st.session_state.chat_history
+                        }
+                        workflow_service = WorkflowService(request)
+                        result = workflow_service.resume(prompt, thread_id)
+                    else:
+                        # Invoke Agent
+                        request = {
+                            "user_input": prompt,
+                            "uploaded_file": st.session_state.uploaded_file_path,
+                            "chat_history": st.session_state.chat_history
+                        }
+                        workflow_service = WorkflowService(request)
+                        result = workflow_service.invoke(
+                            request
+                        )
+                
+                    # Append result to chat history 
+                    st.session_state.chat_history = st.session_state.chat_history + result["data"]["messages"]
     
         # Clear spinner (optional)
         spinner_placeholder.empty()

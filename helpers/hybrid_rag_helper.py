@@ -1,5 +1,5 @@
 from config.azure_config import llm
-from .llm_cache import get_cached_response, set_cached_response
+from .llm_cache import get_cached_response, set_cached_response, get_semantic_cached_response
 
 # Build the context from top 5 chunks retrieved from hybrid search
 # Join the chunks and return the context
@@ -56,10 +56,21 @@ def generate_response(
         {query}
     """
 
-    # Check cache first
+    # Check cache for the exact query match
+    # Sample prompts to test caching:
+    # what is the eligibility criteria for maternity leave according to the our org leave policy?
     cached = get_cached_response(query, context, user_groups)
     if cached is not None:
         return cached
+
+    # Check cache for semantic search match
+    # If the query is semantically similar to a cached query, return the cached response
+    # Sample prompts to test semantic caching:
+    # what is the eligibility criteria for maternity leave according to the our org leave policy?
+    # who is eligible for maternity leave according to the our org leave policy?
+    response = get_semantic_cached_response(query, user_groups)
+    if response:
+        return response
 
     response = llm.invoke(prompt)
     content = response.content

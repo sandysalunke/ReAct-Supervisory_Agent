@@ -61,6 +61,8 @@ def hybrid_rag_agent(state: AgentState) -> AgentState:
 
     top5chunks = hybrid_search(task_prompt)
 
+    # what is the eligibility criteria for maternity leave according to the our org leave policy?
+    # what criteria makes employee to be eligible for maternity leave according to the our org leave policy?
     result = generate_response(task_prompt, top5chunks, user_groups)
 
     return {

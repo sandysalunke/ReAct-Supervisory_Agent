@@ -9,6 +9,8 @@ from nodes.planner import create_plan, get_execution_plan
 from langchain_core.utils.uuid import uuid7
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import SystemMessage, HumanMessage
+from utils.tracing import tracer
+from opentelemetry import trace
 
 ####################################
 # This variable to be replaced with a persistent checkpointer in future. Currently, 
@@ -25,9 +27,11 @@ class WorkflowService:
     # function to initialize the WorkflowService with request data and build the graph
     def __init__(self, request: Annotated):
         self.request = request
-        self.thread_id = self.thread_id = self.request.get("thread_id") or str(uuid7())
+        self.thread_id = self.request.get("thread_id") or str(uuid7())
         self.checkpointer = GLOBAL_CHECKPOINTER
-        self.graph = self.build_graph()
+        # Trace graph construction per request/thread
+        with tracer.start_as_current_span("workflow.init", attributes={"thread_id": self.thread_id}):
+            self.graph = self.build_graph()
 
     ###############################################
     # function to build the graph based on the execution plan
@@ -37,11 +41,17 @@ class WorkflowService:
         chat_history = self.request["chat_history"]
     
         # Create execution plan for user input
-        if self.request.get("workflow_status") == "INTERRUPTED":
-            self.execution_plan = get_execution_plan(self.thread_id)
-        else:
-            self.execution_plan = create_plan(self.thread_id, prompt, uploaded_file)
-        print("EXECUTION PLAN: ", json.dumps(self.execution_plan, indent=2))
+        with tracer.start_as_current_span("workflow.build_graph", attributes={"thread_id": self.thread_id, "prompt_length": len(str(prompt) or "")}):
+            if self.request.get("workflow_status") == "INTERRUPTED":
+                self.execution_plan = get_execution_plan(self.thread_id)
+            else:
+                self.execution_plan = create_plan(self.thread_id, prompt, uploaded_file)
+            try:
+                task_count = len(self.execution_plan.get("tasks", []))
+            except Exception:
+                task_count = 0
+            trace.get_current_span().set_attribute("workflow.tasks.count", task_count)
+            print("EXECUTION PLAN: ", json.dumps(self.execution_plan, indent=2))
         
         # Initiate a graph
         graph = StateGraph(AgentState)
@@ -111,11 +121,12 @@ class WorkflowService:
 
         def node(state):
 
-            return agent_fn({
-                **state,
-                "current_task": task,
-                "task_prompt": task["prompt"],
-            })
+            with tracer.start_as_current_span("task.execute", attributes={"task_id": task.get("id"), "intent": task.get("intent")}):
+                return agent_fn({
+                    **state,
+                    "current_task": task,
+                    "task_prompt": task["prompt"],
+                })
 
         return node
 
@@ -123,62 +134,64 @@ class WorkflowService:
     # function to invoke the graph with input data and thread_id
     def invoke(self, input_data):
         print("----Graph Invoked----")
-        result = self.graph.invoke(
-            {
-                **input_data,
-                "thread_id": self.thread_id,
-                "execution_plan": self.execution_plan
-            },
-            config={
-                "configurable": {
-                    "thread_id": self.thread_id
+        with tracer.start_as_current_span("graph.invoke", attributes={"thread_id": self.thread_id}):
+            result = self.graph.invoke(
+                {
+                    **input_data,
+                    "thread_id": self.thread_id,
+                    "execution_plan": self.execution_plan
+                },
+                config={
+                    "configurable": {
+                        "thread_id": self.thread_id
+                    }
                 }
-            }
-        )
+            )
         return self._build_response(self.thread_id, result)
 
     ##############################################
     # function to resume the graph with user response and thread_id
     def resume(self, user_response, thread_id):
         print("----Graph Resumed----")
-        
-
-        result = self.graph.invoke(
-            Command(resume=user_response),
-            config={
-                "configurable": {
-                    "thread_id": thread_id
+        with tracer.start_as_current_span("graph.resume", attributes={"thread_id": thread_id}):
+            result = self.graph.invoke(
+                Command(resume=user_response),
+                config={
+                    "configurable": {
+                        "thread_id": thread_id
+                    }
                 }
-            }
-        )
+            )
         return self._build_response(thread_id, result)
 
     ##############################################
     # function to build the response based on the result of the graph execution
     def _build_response(self, thread_id, result):
+        with tracer.start_as_current_span("workflow.build_response", attributes={"thread_id": thread_id}):
+            if "__interrupt__" in result:
+                trace.get_current_span().set_attribute("workflow.status", "INTERRUPTED")
+                print("===========Inturrupt==========")
+                return {
+                    "thread_id": thread_id,
+                    "workflow_status": "INTERRUPTED",
+                    "interrupt": result["__interrupt__"],
+                    "data": {
+                        "messages": [
+                            HumanMessage(content=self.request["user_input"]),
+                            SystemMessage(
+                                content=result["__interrupt__"][0].value,
+                                additional_kwargs={
+                                    "thread_id": thread_id,
+                                    "workflow_status": "INTERRUPTED"
+                                }
+                            )
+                        ]
+                    }
+                }
 
-        if "__interrupt__" in result:
-            print("===========Inturrupt==========")
+            trace.get_current_span().set_attribute("workflow.status", "COMPLETED")
             return {
                 "thread_id": thread_id,
-                "workflow_status": "INTERRUPTED",
-                "interrupt": result["__interrupt__"],
-                "data": {
-                    "messages": [
-                        HumanMessage(content=self.request["user_input"]),
-                        SystemMessage(
-                            content=result["__interrupt__"][0].value,
-                            additional_kwargs={
-                                "thread_id": thread_id,
-                                "workflow_status": "INTERRUPTED"
-                            }
-                        )
-                    ]
-                }
+                "workflow_status": "COMPLETED",
+                "data": result
             }
-
-        return {
-            "thread_id": thread_id,
-            "workflow_status": "COMPLETED",
-            "data": result
-        }

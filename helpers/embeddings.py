@@ -17,4 +17,4 @@ class AzureEmbeddingWrapper(Embeddings):
             input=text
         )
 
-        return response.data[0].embedding
+        return response.data[0].embedding or ""
