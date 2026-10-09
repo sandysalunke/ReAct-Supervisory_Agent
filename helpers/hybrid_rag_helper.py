@@ -1,5 +1,6 @@
 from config.azure_config import llm
-from .llm_cache import get_cached_response, set_cached_response, get_semantic_cached_response
+from utils.tracing import tracer
+from opentelemetry import trace
 
 # Build the context from top 5 chunks retrieved from hybrid search
 # Join the chunks and return the context
@@ -29,56 +30,42 @@ def generate_response(
     """
     Generate an answer using retrieved chunks.
     """
+    with tracer.start_as_current_span("agent.hybrid_rag.generate_response", attributes={"llm_used": True}):
 
-    context = build_context_hybrid_search(top5chunks)
+        context = build_context_hybrid_search(top5chunks)
 
-    prompt = f"""
-        You are an enterprise knowledge assistant.
+        prompt = f"""
+            You are an enterprise knowledge assistant.
 
-        Answer the user's question using ONLY the supplied
-        knowledge base context.
+            Answer the user's question using ONLY the supplied
+            knowledge base context.
 
-        Citation rules:
+            Citation rules:
 
-        1. Cite factual statements using the source identifier provided
-        in the context, for example [1] or [2].
-        2. Do not invent source identifiers.
-        3. Only cite a source when that source supports the claim.
-        4. Multiple sources can be cited as [1][2].
-        5. Do not create a Sources section yourself.
-        6. If the answer isn't supported by the supplied context, say:
-        "I could not find this information in the knowledge base."
+            1. Cite factual statements using the source identifier provided
+            in the context, for example [1] or [2].
+            2. Do not invent source identifiers.
+            3. Only cite a source when that source supports the claim.
+            4. Multiple sources can be cited as [1][2].
+            5. Do not create a Sources section yourself.
+            6. If the answer isn't supported by the supplied context, say:
+            "I could not find this information in the knowledge base."
 
-        Context:
-        {context}
+            Context:
+            {context}
 
-        Question:
-        {query}
-    """
+            Question:
+            {query}
+        """
 
-    # Check cache for the exact query match
-    # Sample prompts to test caching:
-    # what is the eligibility criteria for maternity leave according to the our org leave policy?
-    cached = get_cached_response(query, context, user_groups)
-    if cached is not None:
-        return cached
+        response = llm.invoke(prompt)
+        content = response.content
 
-    # Check cache for semantic search match
-    # If the query is semantically similar to a cached query, return the cached response
-    # Sample prompts to test semantic caching:
-    # what is the eligibility criteria for maternity leave according to the our org leave policy?
-    # who is eligible for maternity leave according to the our org leave policy?
-    response = get_semantic_cached_response(query, user_groups)
-    if response:
-        return response
-
-    response = llm.invoke(prompt)
-    content = response.content
-
-    # Cache the LLM output for future identical requests
-    try:
-        set_cached_response(query, context, content, user_groups)
-    except Exception:
-        pass
+        usage = response.response_metadata["token_usage"]
+        trace.get_current_span().set_attribute("llm.model", response.response_metadata["model_name"])
+        trace.get_current_span().set_attribute("llm.prompt_tokens", usage["prompt_tokens"])
+        trace.get_current_span().set_attribute("llm.completion_tokens", usage["completion_tokens"])
+        trace.get_current_span().set_attribute("llm.total_tokens", usage["total_tokens"])
+        trace.get_current_span().set_attribute("llm.finish_reason", response.response_metadata["finish_reason"])
 
     return content

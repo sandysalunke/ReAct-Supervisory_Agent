@@ -106,7 +106,7 @@ def delete_execution_plan(thread_id: str):
     Delete execution plan after workflow completion.
     """
 
-    file_path = f"./data/plan/{thread_id}.json"
+    file_path = Path(f"./data/plan/{thread_id}.json")
 
     if file_path.exists():
         os.remove(file_path)

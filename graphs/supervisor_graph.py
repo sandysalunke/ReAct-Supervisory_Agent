@@ -5,7 +5,7 @@ from agent_state.agent_state import AgentState
 from langgraph.types import interrupt, Command
 from langgraph.graph import StateGraph, START, END
 from agents import chat_agent, hybrid_rag_agent, rag_agent, sql_agent, ocr_agent, meeting_agent, image_agent, excel_agent, summary_agent, ppt_agent
-from nodes.planner import create_plan, get_execution_plan
+from nodes.planner import create_plan, get_execution_plan, delete_execution_plan
 from langchain_core.utils.uuid import uuid7
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -51,6 +51,7 @@ class WorkflowService:
             except Exception:
                 task_count = 0
             trace.get_current_span().set_attribute("workflow.tasks.count", task_count)
+            trace.get_current_span().set_attribute("workflow.execution_plan", json.dumps(self.execution_plan))
             print("EXECUTION PLAN: ", json.dumps(self.execution_plan, indent=2))
         
         # Initiate a graph
@@ -121,7 +122,7 @@ class WorkflowService:
 
         def node(state):
 
-            with tracer.start_as_current_span("task.execute", attributes={"task_id": task.get("id"), "intent": task.get("intent")}):
+            with tracer.start_as_current_span(f"task.{task.get("intent")}", attributes={"task_id": task.get("id"), "intent": task.get("intent")}):
                 return agent_fn({
                     **state,
                     "current_task": task,
@@ -162,6 +163,7 @@ class WorkflowService:
                     }
                 }
             )
+            delete_execution_plan(thread_id)
         return self._build_response(thread_id, result)
 
     ##############################################

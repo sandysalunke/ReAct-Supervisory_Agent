@@ -4,9 +4,10 @@ import threading
 import time
 from pathlib import Path
 from helpers.embeddings import AzureEmbeddingWrapper
-import hashlib
 import math
 from typing import Optional
+from utils.tracing import tracer
+from opentelemetry import trace
 
 _CACHE_LOCK = threading.Lock()
 
@@ -52,13 +53,11 @@ def _write_cache(cache: dict) -> None:
     tmp.replace(path)
 
 
-def _make_key(query: str, context: str, user_groups: str) -> str:
+def _make_key(query: str, user_groups: str) -> str:
     h = hashlib.sha256()
     h.update(query.encode("utf-8"))
     h.update(b"\n")
     h.update(user_groups.encode("utf-8"))
-    h.update(b"\n")
-    h.update(context.encode("utf-8"))
     return h.hexdigest()
 
 
@@ -68,73 +67,68 @@ def _security_scope(user_groups: str) -> str:
     ).hexdigest()
 
 
-def get_cached_response(query: str, context: str, user_groups: str):
-    key = _make_key(query, context, user_groups)
-    with _CACHE_LOCK:
-        cache = _load_cache()
-        entry = cache.get(key)
-        if entry:
-            return entry.get("response")
-    return None
+def get_cached_response(query: str, user_groups: str):
+    with tracer.start_as_current_span("cache.get_exact", attributes={"cache.type": "exact"}):
+        key = _make_key(query, user_groups)
+        with _CACHE_LOCK:
+            cache = _load_cache()
+            entry = cache.get(key)
+            if entry:
+                    trace.get_current_span().set_attribute("cache.hit", True)
+                    return entry.get("response")
+    
+        trace.get_current_span().set_attribute("cache.hit", False)
+        return None
 
 
 def get_semantic_cached_response(
     query: str,
+    query_embedding: list[float],
     user_groups: str,
     threshold: float = 0.90
 ) -> Optional[str]:  # Embed the new question
-    query_embedding = AzureEmbeddingWrapper().embed_query(query)
+    with tracer.start_as_current_span("cache.get_semantic", attributes={"threshold": threshold, "cache.type": "semantic"}):
+        # Security boundary
+        current_scope = _security_scope(user_groups)
 
-    # Security boundary
-    current_scope = _security_scope(user_groups)
+        with _CACHE_LOCK:
+            cache = _load_cache()
 
-    with _CACHE_LOCK:
-        cache = _load_cache()
+        best_score = -1.0
+        best_entry = None
 
-    best_score = -1.0
-    best_entry = None
+        for entry in cache.values():
 
-    for entry in cache.values():
+            # Do not compare against another security scope
+            if entry.get("security_scope") != current_scope:
+                continue
 
-        # Do not compare against another security scope
-        if entry.get("security_scope") != current_scope:
-            continue
+            cached_embedding = entry.get("query_embedding")
 
-        cached_embedding = entry.get("query_embedding")
+            if not cached_embedding:
+                continue
 
-        if not cached_embedding:
-            continue
+            score = _cosine_similarity(
+                query_embedding,
+                cached_embedding
+            )
 
-        score = _cosine_similarity(
-            query_embedding,
-            cached_embedding
-        )
+            if score > best_score:
+                best_score = score
+                best_entry = entry
 
-        if score > best_score:
-            best_score = score
-            best_entry = entry
+        trace.get_current_span().set_attribute("cache.score", float(best_score))
+        
+        if best_entry is not None and best_score >= threshold:
+            trace.get_current_span().set_attribute("cache.hit", True)
+            return best_entry.get("response")
 
-    if best_entry is not None and best_score >= threshold:
-
-        # print(
-        #     f"Semantic cache HIT | "
-        #     f"score={best_score:.4f} | "
-        #     f"cached_query={best_entry.get('query')}"
-        # )
-
-        return best_entry.get("response")
-
-    # print(
-    #     f"Semantic cache MISS | "
-    #     f"best_score={best_score:.4f}"
-    # )
-
-    return None
+        trace.get_current_span().set_attribute("cache.hit", False)
+        return None
 
 
-def set_cached_response(query: str, context: str, response: str, user_groups: str) -> None:
-    key = _make_key(query, context, user_groups)
-    query_embedding = AzureEmbeddingWrapper().embed_query(query)
+def set_cached_response(query: str, query_embedding: list[float], response: str, user_groups: str) -> None:
+    key = _make_key(query, user_groups)
     security_scope = _security_scope(user_groups)
     with _CACHE_LOCK:
         cache = _load_cache()
@@ -144,4 +138,10 @@ def set_cached_response(query: str, context: str, response: str, user_groups: st
             "security_scope": security_scope, 
             "response": response, 
             "ts": time.time()}
+        
         _write_cache(cache)
+
+        with tracer.start_as_current_span("cache.set", attributes={"user_groups": user_groups}):
+            trace.get_current_span().set_attribute("cache.key", key)
+            trace.get_current_span().set_attribute("cache.stored", True)
+
