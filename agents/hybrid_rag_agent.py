@@ -71,10 +71,11 @@ def hybrid_rag_agent(state: AgentState) -> AgentState:
     user_input = state.get("user_input")
     task_prompt = state.get("task_prompt", user_input)
     current_task = state.get("current_task", {})
+    thread_id = state.get("thread_id")
 
     # Trace the overall agent execution
     with tracer.start_as_current_span("agent.hybrid_rag", attributes={
-        "thread_id": state.get("thread_id"),
+        "thread_id": thread_id,
         "task_id": current_task.get("id"),
         "intent": current_task.get("intent")
     }):
@@ -90,7 +91,7 @@ def hybrid_rag_agent(state: AgentState) -> AgentState:
         # If the query is semantically similar to a cached query, return the cached response
         # Sample prompts to test semantic caching:
         # what is the eligibility criteria for maternity leave according to our org leave policy?
-        # who is eligible for maternity leave according to the our org leave policy?
+        # who is eligible for maternity leave according to our org leave policy?
         # Check cache for semantic search match
         if cached_result is not None:
             result = cached_result
@@ -104,7 +105,7 @@ def hybrid_rag_agent(state: AgentState) -> AgentState:
             else:
                 try:
                     top5chunks = hybrid_search(task_prompt)
-                    result = generate_response(task_prompt, top5chunks, user_groups)
+                    result = generate_response(task_prompt, top5chunks, thread_id)
                     # Cache the LLM output for future identical requests
                     set_cached_response(task_prompt, query_embedding, result, user_groups)
                 except Exception:

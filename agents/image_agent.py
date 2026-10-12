@@ -6,9 +6,12 @@ from opentelemetry import trace
 import base64
 from datetime import datetime
 from helpers.dependency_manager import get_dependency_results
+import uuid
+from datetime import datetime, UTC
+from helpers.cosmos_db_client import container
 
 # Generate the prompt that considers dependency_results and chat_history
-def generate_prompt(task_prompt, dependency_results, chat_history):
+def generate_prompt(thread_id, task_prompt, dependency_results, chat_history):
     prompt = f"""
         You are an Image Generation Agent.
 
@@ -40,6 +43,7 @@ def generate_prompt(task_prompt, dependency_results, chat_history):
     with tracer.start_as_current_span("agent.image.generate_prompt", attributes={"llm_used": True}):
         response = llm.invoke(prompt)
 
+        # Add traces in Cosmos DB for cost observability and monitoring
         usage = response.response_metadata["token_usage"]
         trace.get_current_span().set_attribute("llm.model", response.response_metadata["model_name"])
         trace.get_current_span().set_attribute("llm.prompt_tokens", usage["prompt_tokens"])
@@ -48,10 +52,23 @@ def generate_prompt(task_prompt, dependency_results, chat_history):
         trace.get_current_span().set_attribute("llm.finish_reason", response.response_metadata["finish_reason"])
         trace.get_current_span().set_attribute("prompt_length", len(response.content))
 
+        # Add traces in Cosmos DB for cost observability and monitoring
+        container.create_item({
+            "id": str(uuid.uuid4()),
+            "timestamp": datetime.now(UTC).isoformat(),
+            "agent": "image_agent",
+            "thread_id": thread_id,
+            "model": response.response_metadata["model_name"],
+            "prompt_tokens": usage["prompt_tokens"],
+            "completion_tokens": usage["completion_tokens"],
+            "total_tokens": usage["total_tokens"],
+            "finish_reason": response.response_metadata["finish_reason"],
+        })
+
     return response.content;
 
 # LLM to generate image and return base64 data
-def generate_image(task_prompt):
+def generate_image(thread_id, task_prompt):
     with tracer.start_as_current_span("agent.image.generate_image", attributes={
         "llm_used": True, 
         "llm_model": IMAGE_MODEL,
@@ -64,10 +81,24 @@ def generate_image(task_prompt):
             size="1024x1024"
         )
 
+        # Add traces in Cosmos DB for cost observability and monitoring
         usage = result.usage
         trace.get_current_span().set_attribute("image.input_tokens", usage.input_tokens)
         trace.get_current_span().set_attribute("image.output_tokens", usage.output_tokens)
         trace.get_current_span().set_attribute("image.total_tokens", usage.total_tokens)
+
+        # Add traces in Cosmos DB for cost observability and monitoring
+        container.create_item({
+            "id": str(uuid.uuid4()),
+            "timestamp": datetime.now(UTC).isoformat(),
+            "agent": "image_agent",
+            "thread_id": thread_id,
+            "model": IMAGE_MODEL,
+            "prompt_tokens": usage.input_tokens,
+            "completion_tokens": usage.output_tokens,
+            "total_tokens": usage.total_tokens,
+            "finish_reason": "",
+        })
 
         img_base64 = base64.b64decode(result.data[0].b64_json)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -94,15 +125,16 @@ def image_agent(state: AgentState) -> AgentState:
     current_task = state.get("current_task", {})
     task_results = state.get("task_results",{})
     chat_history = state.get("chat_history",[])
+    thread_id = state.get("thread_id")
 
     with tracer.start_as_current_span("agent.image", attributes={
-            "thread_id": state.get("thread_id"),
+            "thread_id": thread_id,
             "task_id": current_task.get("id"),
             "intent": current_task.get("intent")
         }):
         dependency_results = get_dependency_results(current_task, task_results)
-        task_prompt = generate_prompt(task_prompt, dependency_results, chat_history)
-        result = generate_image(task_prompt)
+        task_prompt = generate_prompt(thread_id, task_prompt, dependency_results, chat_history)
+        result = generate_image(thread_id, task_prompt)
         
         return {
             "agent_result": [result],

@@ -1,6 +1,9 @@
 from config.azure_config import llm
 from utils.tracing import tracer
 from opentelemetry import trace
+import uuid
+from datetime import datetime, UTC
+from helpers.cosmos_db_client import container
 
 # Build the context from top 5 chunks retrieved from hybrid search
 # Join the chunks and return the context
@@ -25,7 +28,7 @@ def build_context_hybrid_search(top5chunks):
 def generate_response(
     query: str,
     top5chunks,
-    user_groups
+    thread_id: str
 ):
     """
     Generate an answer using retrieved chunks.
@@ -61,11 +64,25 @@ def generate_response(
         response = llm.invoke(prompt)
         content = response.content
 
+        # Add traces in AI for observability and monitoring
         usage = response.response_metadata["token_usage"]
         trace.get_current_span().set_attribute("llm.model", response.response_metadata["model_name"])
         trace.get_current_span().set_attribute("llm.prompt_tokens", usage["prompt_tokens"])
         trace.get_current_span().set_attribute("llm.completion_tokens", usage["completion_tokens"])
         trace.get_current_span().set_attribute("llm.total_tokens", usage["total_tokens"])
         trace.get_current_span().set_attribute("llm.finish_reason", response.response_metadata["finish_reason"])
+
+        # Add traces in Cosmos DB for cost observability and monitoring
+        container.create_item({
+            "id": str(uuid.uuid4()),
+            "timestamp": datetime.now(UTC).isoformat(),
+            "agent": "hybrid_rag_agent",
+            "thread_id": thread_id,
+            "model": response.response_metadata["model_name"],
+            "prompt_tokens": usage["prompt_tokens"],
+            "completion_tokens": usage["completion_tokens"],
+            "total_tokens": usage["total_tokens"],
+            "finish_reason": response.response_metadata["finish_reason"],
+        })
 
     return content

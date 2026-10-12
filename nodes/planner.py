@@ -2,6 +2,11 @@ from config.azure_config import llm
 import json
 import os
 from pathlib import Path
+import uuid
+from datetime import datetime, UTC
+from helpers.cosmos_db_client import container
+from utils.tracing import tracer
+from opentelemetry import trace
 
 def create_plan(thread_id: str, prompt: str, uploaded_file: str) -> dict:
     
@@ -61,15 +66,39 @@ def create_plan(thread_id: str, prompt: str, uploaded_file: str) -> dict:
             - Use chat directly for general knowledge questions that do not require
             database access, files, meetings, images, or spreadsheets.
         """
+
+    with tracer.start_as_current_span("planner.create_plan", attributes={"llm_used": True, "thread_id": thread_id}):
     
-    # Invoke LLM
-    result = llm.invoke(prompt).content
+        # Invoke LLM
+        result = llm.invoke(prompt)
 
-    execution_plan = json.loads(result)
+        execution_plan = json.loads(result.content)
 
-    save_execution_plan(thread_id, execution_plan)  # Save the execution plan for the thread
+        # Add traces in AI for observability and monitoring
+        usage = result.response_metadata["token_usage"]
+        trace.get_current_span().set_attribute("llm.model", result.response_metadata["model_name"])
+        trace.get_current_span().set_attribute("llm.prompt_tokens", usage["prompt_tokens"])
+        trace.get_current_span().set_attribute("llm.completion_tokens", usage["completion_tokens"])
+        trace.get_current_span().set_attribute("llm.total_tokens", usage["total_tokens"])
+        trace.get_current_span().set_attribute("llm.finish_reason", result.response_metadata["finish_reason"])
+        trace.get_current_span().set_attribute("execution_plan", execution_plan)
 
-    return execution_plan
+        # Add traces in Cosmos DB for cost observability and monitoring
+        container.create_item({
+            "id": str(uuid.uuid4()),
+            "timestamp": datetime.now(UTC).isoformat(),
+            "agent": "chat_agent",
+            "thread_id": thread_id,
+            "model": result.response_metadata["model_name"],
+            "prompt_tokens": usage["prompt_tokens"],
+            "completion_tokens": usage["completion_tokens"],
+            "total_tokens": usage["total_tokens"],
+            "finish_reason": result.response_metadata["finish_reason"],
+        })
+
+        save_execution_plan(thread_id, execution_plan)  # Save the execution plan for the thread
+
+        return execution_plan
 
 def save_execution_plan(thread_id: str, execution_plan: dict):
     """
