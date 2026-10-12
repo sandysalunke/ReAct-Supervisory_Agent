@@ -1,5 +1,7 @@
 import json
 from config.azure_config import llm
+from utils.tracing import tracer
+from opentelemetry import trace
 from agent_state.agent_state import AgentState
 from langgraph.types import interrupt
 from helpers.dependency_manager import get_dependency_results
@@ -30,22 +32,30 @@ def chat_agent(state: AgentState):
         Generate the next response considering all previous results and chat history.
     """
 
-    response = llm.invoke(prompt)
+    with tracer.start_as_current_span("agent.chat", attributes={"llm_used": True}):
+        response = llm.invoke(prompt)
 
-    if state.get("human_comment"):
-        comment = state["human_comment"]
-    else:
-        comment = interrupt("Should I continue?")
-        
-    return {
-        "human_comment": comment,
-        "agent_result": [response.content],
-        "completed_steps": ["chat"],
-        "task_results": {
-            current_task["id"]: {
-                "intent": current_task["intent"],
-                "result": response.content
+        usage = response.response_metadata["token_usage"]
+        trace.get_current_span().set_attribute("llm.model", response.response_metadata["model_name"])
+        trace.get_current_span().set_attribute("llm.prompt_tokens", usage["prompt_tokens"])
+        trace.get_current_span().set_attribute("llm.completion_tokens", usage["completion_tokens"])
+        trace.get_current_span().set_attribute("llm.total_tokens", usage["total_tokens"])
+        trace.get_current_span().set_attribute("llm.finish_reason", response.response_metadata["finish_reason"])
+
+        if state.get("human_comment"):
+            comment = state["human_comment"]
+        else:
+            comment = interrupt("Should I continue?")
+            
+        return {
+            "human_comment": comment,
+            "agent_result": [response.content],
+            "completed_steps": ["chat"],
+            "task_results": {
+                current_task["id"]: {
+                    "intent": current_task["intent"],
+                    "result": response.content
+                }
             }
         }
-    }
     

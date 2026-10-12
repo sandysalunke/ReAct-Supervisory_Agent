@@ -7,9 +7,8 @@ from azure.search.documents.models import VectorizableTextQuery
 from helpers.hybrid_rag_helper import generate_response
 from utils.tracing import tracer
 from opentelemetry import trace
-from helpers.llm_cache import get_cached_response, get_semantic_cached_response
+from helpers.llm_cache import get_cached_response, get_semantic_cached_response, set_cached_response
 from helpers.embeddings import AzureEmbeddingWrapper
-from helpers.llm_cache import set_cached_response
 
 
 load_dotenv()
