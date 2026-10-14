@@ -12,44 +12,14 @@
 - Excel Analytics
 - PowerPoint agent
 - Human in the loop (In Chat Agent)
+- Cost Evaluation Dashboard
 
 ### TBD:
 - Document Comparison Agent
-- Evaluation & Telemetry Dashboard (Agent accuracy)
-      - Track cost - Use SQLite
-            - Per workflow - thread_id
-            - Per model
-            - Per agent
-            - By time
-            - By user/user group
-
-            ```python
-            Store:
-                  Model invocation:
-                  {
-                        "thread_id": thread_id,
-                        "agent": "knowledge_search",
-                        "model": "gpt-4o-2024-11-20",
-                        "prompt_tokens": 2108,
-                        "completion_tokens": 114,
-                        "total_tokens": 2222
-                  }
-                  Embedding invocation:
-                  {
-                        "agent": "embedding",
-                        "model": "text-embedding-3-small",
-                        "total_tokens": 148
-                  }
-                  Image genetation:
-                  {
-                        "agent": "image_generation",
-                        "model": "gpt-image-1",
-                        "input_tokens": 148,
-                        "output_tokens": 1756,
-                        "total_tokens": 1904
-                  }
-            ```
-
+- Agent accuracy
+- MCP
+- Telemetry Dashboard
+      
 ### Architecture:
 ```python
                             +--------------------+
