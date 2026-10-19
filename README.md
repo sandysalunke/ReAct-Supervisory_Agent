@@ -7,12 +7,12 @@
 - OCR - Image to text conversion
 - SQL Analytics
 - Multi-document RAG
-- Hybrid RAG - Using Azure Search (Keyword + Vector).
-      Refer this [video](https://www.youtube.com/watch?v=yu4M7OKjnR4) for Azure AI setup 
+- Hybrid RAG - Using Azure Search (Keyword + Vector).      
 - Excel Analytics
 - PowerPoint agent
 - Human in the loop (In Chat Agent)
 - Cost Evaluation Dashboard
+- Websearch agent
 
 ### TBD:
 - Document Comparison Agent
@@ -49,54 +49,19 @@
                               +-------------------+
 ```
 
-### Folder Structure:
-```python
-app/
-│
-├── agent_state/
-│   ├── agent_state.py
-│
-├── agents/
-│   ├── chat_agent.py
-│   ├── image_agent.py
-│   ├── rag_agent.py
-│   ├── sql_agent.py
-│   ├── ocr_agent.py
-│   ├── meeting_agent.py
-|   └── excel_agent.py
-|   └── summary_agent.py
-│
-├── cofig/
-│   └── azure_config.py
-│
-├── data/
-│   └── /images
-│   └── /uplaods
-│   └── /vectorDB
-│
-├── graphs/
-│   └── supervisor_graph.py
-│
-├── helpers/
-│   ├── chunk_helper.py
-│   ├── embeddings.py
-│   ├── dependency_manager.py
-│   ├── file_operations.py
-│   ├── rag_helper.py
-│   ├── SQLite.py
-│   ├── vector_db.py
-│   └── createSQLiteMultipleTableDB.py (run thus file to create SQLite DB)
-│
-├── nodes/
-│   ├── classifier.py
-│   ├── planner.py
-│   └── router.py
-│
-├── tools/
-│   └── excel_tools.py
-│
-└── main.py
-```
+### Steps to setup Azire AI search for Hybrid RAG
+- Refer this [video](https://www.youtube.com/watch?v=yu4M7OKjnR4) for Azure AI Search setup 
+- Create Blob Storage Account
+- Create container
+- Upload documents
+- Configure Vecror profile, Vector algorithm, Vectorizer
+- Create Search Service (Foundry IQ)
+- Create Index
+- Create Indexer
+- Create Skillset
+- Add field to the index to store vector data
+- Add application insights to log traces for Performance Dashboard
+- Add cosmos DB to store usage information for Analytics Dashboard
 
 ### Sample Prompts:
 Excel + SQL + Chat
