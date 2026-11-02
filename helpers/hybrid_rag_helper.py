@@ -43,7 +43,7 @@ def rate_the_answer( thread_id: str, query: str, answer: str, context: str):
         
         response = llm.invoke(prompt)
         score = json.loads(response.content)
-        print("LLM Judge Response:", score)
+        # print("LLM Judge Response:", score)
         
         # Add traces in AI for observability and monitoring
         usage = response.response_metadata["token_usage"]

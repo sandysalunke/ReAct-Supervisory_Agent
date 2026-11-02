@@ -16,9 +16,9 @@
 
 ### TBD:
 - Document Comparison Agent
-- Agent accuracy
-- MCP
-- Telemetry Dashboard
+- MCP Server
+- Webserach Agent
+- Integration with JIRA/ADO
       
 ### Architecture:
 ```python
@@ -49,7 +49,7 @@
                               +-------------------+
 ```
 
-### Steps to setup Azire AI search for Hybrid RAG
+### Steps to setup Azure AI search for Hybrid RAG
 - Refer this [video](https://www.youtube.com/watch?v=yu4M7OKjnR4) for Azure AI Search setup 
 - Create Blob Storage Account
 - Create container
@@ -60,8 +60,8 @@
 - Create Indexer
 - Create Skillset
 - Add field to the index to store vector data
-- Add application insights to log traces for Performance Dashboard
-- Add cosmos DB to store usage information for Analytics Dashboard
+- Add application insights to log traces for Performance Dashboards
+- Add cosmos DB to store usage information for Analytics (Usage/Cost/Performace/Quality) Dashboards
 
 ### Sample Prompts:
 Excel + SQL + Chat

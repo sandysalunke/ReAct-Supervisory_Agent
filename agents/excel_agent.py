@@ -1,6 +1,5 @@
 from agent_state.agent_state import AgentState
 from langchain.agents import create_agent
-from langchain_core.utils.uuid import uuid7
 from helpers.file_operations import read_excel_file
 from tools.excel_tools import create_excel_tools
 from config.azure_config import llm
@@ -59,7 +58,7 @@ def excel_agent(state: AgentState) -> AgentState:
             },
             config={
                 "configurable": {
-                    "thread_id": str(uuid7())
+                    "thread_id": state.get("thread_id")
                 }
             }
         )
