@@ -56,6 +56,19 @@ def retrieve_documents(
         k=k
     )
 
+
+async def retrieve_documents_async(
+    query: str,
+    vector_store,
+    k: int = 5
+):
+    """Retrieve relevant chunks without blocking the async workflow."""
+    return await vector_store.asimilarity_search(
+        query=query,
+        k=k
+    )
+
+
 # Retrive contnet from the document using Similarity search along with match score
 def retrieve_documents_with_scores(
     query: str,

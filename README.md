@@ -22,7 +22,7 @@
 
 ### Async workflow
 - The Streamlit UI remains synchronous, but the LangGraph workflow uses async graph invocation (`ainvoke`) and async task nodes.
-- The planner and chat agent use native async model calls; other synchronous agents run in worker threads so blocking SDK and file-processing work does not block the async workflow.
+- The planner, chat agent, and uploaded-document RAG path use native async model/retrieval calls; blocking document parsing and vector-store setup run in worker threads. Other synchronous agents also run in worker threads.
 - The sync-only UI bridges into the async workflow with `asyncio.run` for each submitted request.
 - Migrate remaining integrations to native async SDKs one agent at a time, keeping blocking file and CPU work off the event loop.
       

@@ -16,7 +16,7 @@ def build_context(
 
 # Generate the response
 # Uses LLM along with context and user prompt  
-def generate_response(
+async def generate_response(
     query: str,
     retrieved_docs
 ):
@@ -36,6 +36,6 @@ def generate_response(
         {query}
     """
 
-    response = llm.invoke(prompt)
+    response = await llm.ainvoke(prompt)
 
     return response.content
