@@ -1,3 +1,4 @@
+import asyncio
 from utils.tracing import tracer
 from graphs.supervisor_graph import WorkflowService
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
@@ -81,7 +82,9 @@ if is_streamlit_app:
                             "chat_history": st.session_state.chat_history
                         }
                         workflow_service = WorkflowService(request)
-                        result = workflow_service.resume(prompt, thread_id)
+                        result = asyncio.run(
+                            workflow_service.resume(prompt, thread_id)
+                        )
                     else:
                         # Invoke Agent
                         request = {
@@ -90,8 +93,8 @@ if is_streamlit_app:
                             "chat_history": st.session_state.chat_history
                         }
                         workflow_service = WorkflowService(request)
-                        result = workflow_service.invoke(
-                            request
+                        result = asyncio.run(
+                            workflow_service.invoke(request)
                         )
                 
                     # Append result to chat history 
@@ -120,8 +123,8 @@ else:
     }
     workflow_service = WorkflowService(request)
     
-    result = workflow_service.invoke(
-        request
+    result = asyncio.run(
+        workflow_service.invoke(request)
     )
     print("\n ===== MAIN RESULT =====")
     print("\n messages: ", result)

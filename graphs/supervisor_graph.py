@@ -1,4 +1,6 @@
 ####################################
+import asyncio
+import inspect
 import json
 from typing import Annotated
 from agent_state.agent_state import AgentState
@@ -24,28 +26,35 @@ class WorkflowService:
     thread_id: str
 
     ###############################################
-    # function to initialize the WorkflowService with request data and build the graph
+    # Initialize the workflow service with request data.
     def __init__(self, request: Annotated):
         self.request = request
         self.thread_id = self.request.get("thread_id") or str(uuid7())
         self.checkpointer = GLOBAL_CHECKPOINTER
+        self.execution_plan = None
+        self.graph = None
+
+    async def initialize(self):
         # Trace graph construction per request/thread
         with tracer.start_as_current_span("workflow.init", attributes={"thread_id": self.thread_id}):
-            self.graph = self.build_graph()
+            self.graph = await self.build_graph()
 
     ###############################################
     # function to build the graph based on the execution plan
-    def build_graph(self) -> AgentState:
+    async def build_graph(self) -> AgentState:
         prompt = self.request["user_input"]
         uploaded_file = self.request["uploaded_file"]
-        chat_history = self.request["chat_history"]
     
         # Create execution plan for user input
         with tracer.start_as_current_span("workflow.build_graph", attributes={"thread_id": self.thread_id, "prompt_length": len(str(prompt) or "")}):
             if self.request.get("workflow_status") == "INTERRUPTED":
-                self.execution_plan = get_execution_plan(self.thread_id)
+                self.execution_plan = await asyncio.to_thread(
+                    get_execution_plan, self.thread_id
+                )
             else:
-                self.execution_plan = create_plan(self.thread_id, prompt, uploaded_file)
+                self.execution_plan = await create_plan(
+                    self.thread_id, prompt, uploaded_file
+                )
             try:
                 task_count = len(self.execution_plan.get("tasks", []))
             except Exception:
@@ -120,23 +129,28 @@ class WorkflowService:
     # function to create a task node for the graph
     def create_task_node(self, agent_fn, task):
 
-        def node(state):
+        async def node(state):
 
             with tracer.start_as_current_span(f"task.{task.get("intent")}", attributes={"task_id": task.get("id"), "intent": task.get("intent")}):
-                return agent_fn({
+                task_state = {
                     **state,
                     "current_task": task,
                     "task_prompt": task["prompt"],
-                })
+                }
+                if inspect.iscoroutinefunction(agent_fn):
+                    return await agent_fn(task_state)
+                return await asyncio.to_thread(agent_fn, task_state)
 
         return node
 
     ##############################################
     # function to invoke the graph with input data and thread_id
-    def invoke(self, input_data):
+    async def invoke(self, input_data):
+        if self.graph is None:
+            await self.initialize()
         print("----Graph Invoked----")
         with tracer.start_as_current_span("graph.invoke", attributes={"thread_id": self.thread_id}):
-            result = self.graph.invoke(
+            result = await self.graph.ainvoke(
                 {
                     **input_data,
                     "thread_id": self.thread_id,
@@ -152,10 +166,12 @@ class WorkflowService:
 
     ##############################################
     # function to resume the graph with user response and thread_id
-    def resume(self, user_response, thread_id):
+    async def resume(self, user_response, thread_id):
+        if self.graph is None:
+            await self.initialize()
         print("----Graph Resumed----")
         with tracer.start_as_current_span("graph.resume", attributes={"thread_id": thread_id}):
-            result = self.graph.invoke(
+            result = await self.graph.ainvoke(
                 Command(resume=user_response),
                 config={
                     "configurable": {
@@ -163,7 +179,7 @@ class WorkflowService:
                     }
                 }
             )
-            delete_execution_plan(thread_id)
+            await asyncio.to_thread(delete_execution_plan, thread_id)
         return self._build_response(thread_id, result)
 
     ##############################################

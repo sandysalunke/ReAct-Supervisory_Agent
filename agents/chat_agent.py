@@ -1,3 +1,4 @@
+import asyncio
 import json
 from config.azure_config import llm
 from utils.tracing import tracer
@@ -10,7 +11,7 @@ from datetime import datetime, UTC
 from helpers.cosmos_db_client import container
 
 # chat_agent - Added as node in supervisor agent graph
-def chat_agent(state: AgentState):
+async def chat_agent(state: AgentState):
     """Use this agent for General conversational AI tasks"""
     print("\n===== CHAT AGENT =====")
 
@@ -36,7 +37,7 @@ def chat_agent(state: AgentState):
     """
 
     with tracer.start_as_current_span("agent.chat", attributes={"llm_used": True}):
-        response = llm.invoke(prompt)
+        response = await llm.ainvoke(prompt)
 
         # Add traces in AI for observability and monitoring
         usage = response.response_metadata["token_usage"]
@@ -47,17 +48,20 @@ def chat_agent(state: AgentState):
         trace.get_current_span().set_attribute("llm.finish_reason", response.response_metadata["finish_reason"])
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        container.create_item({
-            "id": str(uuid.uuid4()),
-            "timestamp": datetime.now(UTC).isoformat(),
-            "agent": "chat_agent",
-            "thread_id": state.get("thread_id"),
-            "model": response.response_metadata["model_name"],
-            "prompt_tokens": usage["prompt_tokens"],
-            "completion_tokens": usage["completion_tokens"],
-            "total_tokens": usage["total_tokens"],
-            "finish_reason": response.response_metadata["finish_reason"],
-        })
+        await asyncio.to_thread(
+            container.create_item,
+            {
+                "id": str(uuid.uuid4()),
+                "timestamp": datetime.now(UTC).isoformat(),
+                "agent": "chat_agent",
+                "thread_id": state.get("thread_id"),
+                "model": response.response_metadata["model_name"],
+                "prompt_tokens": usage["prompt_tokens"],
+                "completion_tokens": usage["completion_tokens"],
+                "total_tokens": usage["total_tokens"],
+                "finish_reason": response.response_metadata["finish_reason"],
+            },
+        )
 
         if state.get("human_comment"):
             comment = state["human_comment"]

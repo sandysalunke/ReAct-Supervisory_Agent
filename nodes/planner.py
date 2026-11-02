@@ -1,14 +1,18 @@
+import asyncio
 from config.azure_config import llm
 import json
 import os
 from pathlib import Path
+from typing import Optional
 import uuid
 from datetime import datetime, UTC
 from helpers.cosmos_db_client import container
 from utils.tracing import tracer
 from opentelemetry import trace
 
-def create_plan(thread_id: str, prompt: str, uploaded_file: str) -> dict:
+async def create_plan(
+    thread_id: str, prompt: str, uploaded_file: Optional[str]
+) -> dict:
     
     prompt = f"""
         Create a workflow DAG.
@@ -70,7 +74,7 @@ def create_plan(thread_id: str, prompt: str, uploaded_file: str) -> dict:
     with tracer.start_as_current_span("planner.create_plan", attributes={"llm_used": True, "thread_id": thread_id}):
     
         # Invoke LLM
-        result = llm.invoke(prompt)
+        result = await llm.ainvoke(prompt)
 
         execution_plan = json.loads(result.content)
 
@@ -84,19 +88,24 @@ def create_plan(thread_id: str, prompt: str, uploaded_file: str) -> dict:
         trace.get_current_span().set_attribute("execution_plan", execution_plan)
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        container.create_item({
-            "id": str(uuid.uuid4()),
-            "timestamp": datetime.now(UTC).isoformat(),
-            "agent": "chat_agent",
-            "thread_id": thread_id,
-            "model": result.response_metadata["model_name"],
-            "prompt_tokens": usage["prompt_tokens"],
-            "completion_tokens": usage["completion_tokens"],
-            "total_tokens": usage["total_tokens"],
-            "finish_reason": result.response_metadata["finish_reason"],
-        })
+        await asyncio.to_thread(
+            container.create_item,
+            {
+                "id": str(uuid.uuid4()),
+                "timestamp": datetime.now(UTC).isoformat(),
+                "agent": "chat_agent",
+                "thread_id": thread_id,
+                "model": result.response_metadata["model_name"],
+                "prompt_tokens": usage["prompt_tokens"],
+                "completion_tokens": usage["completion_tokens"],
+                "total_tokens": usage["total_tokens"],
+                "finish_reason": result.response_metadata["finish_reason"],
+            },
+        )
 
-        save_execution_plan(thread_id, execution_plan)  # Save the execution plan for the thread
+        await asyncio.to_thread(
+            save_execution_plan, thread_id, execution_plan
+        )
 
         return execution_plan
 
