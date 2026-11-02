@@ -1,3 +1,4 @@
+import asyncio
 import json
 from config.azure_config import llm
 from utils.tracing import tracer
@@ -6,7 +7,7 @@ import uuid
 from datetime import datetime, UTC
 from helpers.cosmos_db_client import container
 
-def rate_the_answer( thread_id: str, query: str, answer: str, context: str):
+async def rate_the_answer(thread_id: str, query: str, answer: str, context: str):
     """
     Rate the answer and store the rating in Cosmos DB.
     - Groundedness
@@ -41,7 +42,7 @@ def rate_the_answer( thread_id: str, query: str, answer: str, context: str):
                         }}
                 """
         
-        response = llm.invoke(prompt)
+        response = await llm.ainvoke(prompt)
         score = json.loads(response.content)
         # print("LLM Judge Response:", score)
         
@@ -55,20 +56,23 @@ def rate_the_answer( thread_id: str, query: str, answer: str, context: str):
         trace.get_current_span().set_attribute("llm.score", score)
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        container.create_item({
-            "id": str(uuid.uuid4()),
-            "timestamp": datetime.now(UTC).isoformat(),
-            "agent": "hybrid_rag_agent",
-            "thread_id": thread_id,
-            "model": response.response_metadata["model_name"],
-            "prompt_tokens": usage["prompt_tokens"],
-            "completion_tokens": usage["completion_tokens"],
-            "total_tokens": usage["total_tokens"],
-            "finish_reason": response.response_metadata["finish_reason"],
-            "groundedness": score.get("groundedness"),
-            "relevance": score.get("relevance"),
-            "completeness": score.get("completeness")
-        })
+        await asyncio.to_thread(
+            container.create_item,
+            {
+                "id": str(uuid.uuid4()),
+                "timestamp": datetime.now(UTC).isoformat(),
+                "agent": "hybrid_rag_agent",
+                "thread_id": thread_id,
+                "model": response.response_metadata["model_name"],
+                "prompt_tokens": usage["prompt_tokens"],
+                "completion_tokens": usage["completion_tokens"],
+                "total_tokens": usage["total_tokens"],
+                "finish_reason": response.response_metadata["finish_reason"],
+                "groundedness": score.get("groundedness"),
+                "relevance": score.get("relevance"),
+                "completeness": score.get("completeness")
+            },
+        )
 
 # Build the context from top 5 chunks retrieved from hybrid search
 # Join the chunks and return the context
@@ -90,7 +94,7 @@ def build_context_hybrid_search(top5chunks):
 
 # Generate the response
 # Uses LLM along with context and user prompt  
-def generate_response(
+async def generate_response(
     query: str,
     top5chunks,
     thread_id: str
@@ -126,9 +130,9 @@ def generate_response(
             {query}
         """
 
-        response = llm.invoke(prompt)
+        response = await llm.ainvoke(prompt)
         content = response.content
-        rate_the_answer(thread_id, query, content, context)
+        await rate_the_answer(thread_id, query, content, context)
 
         # Add traces in AI for observability and monitoring
         usage = response.response_metadata["token_usage"]
@@ -139,16 +143,19 @@ def generate_response(
         trace.get_current_span().set_attribute("llm.finish_reason", response.response_metadata["finish_reason"])
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        container.create_item({
-            "id": str(uuid.uuid4()),
-            "timestamp": datetime.now(UTC).isoformat(),
-            "agent": "hybrid_rag_agent",
-            "thread_id": thread_id,
-            "model": response.response_metadata["model_name"],
-            "prompt_tokens": usage["prompt_tokens"],
-            "completion_tokens": usage["completion_tokens"],
-            "total_tokens": usage["total_tokens"],
-            "finish_reason": response.response_metadata["finish_reason"],
-        })
+        await asyncio.to_thread(
+            container.create_item,
+            {
+                "id": str(uuid.uuid4()),
+                "timestamp": datetime.now(UTC).isoformat(),
+                "agent": "hybrid_rag_agent",
+                "thread_id": thread_id,
+                "model": response.response_metadata["model_name"],
+                "prompt_tokens": usage["prompt_tokens"],
+                "completion_tokens": usage["completion_tokens"],
+                "total_tokens": usage["total_tokens"],
+                "finish_reason": response.response_metadata["finish_reason"],
+            },
+        )
 
     return content

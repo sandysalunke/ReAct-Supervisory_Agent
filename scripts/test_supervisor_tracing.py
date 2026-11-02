@@ -18,6 +18,8 @@ from graphs import supervisor_graph
 from nodes import planner
 from agents import rag_agent
 from helpers import rag_helper, vector_db
+from agents import hybrid_rag_agent
+from helpers import embeddings, hybrid_rag_helper
 
 
 async def test_planner_async():
@@ -174,6 +176,165 @@ async def test_rag_response_uses_async_model():
     assert result == "grounded answer"
 
 
+async def test_async_query_embedding():
+    response = type(
+        "EmbeddingResponse",
+        (),
+        {
+            "model": "embedding-model",
+            "usage": type(
+                "EmbeddingUsage",
+                (),
+                {"prompt_tokens": 2, "total_tokens": 2},
+            )(),
+            "data": [type("EmbeddingData", (), {"embedding": [0.1, 0.2]})()],
+        },
+    )()
+
+    with (
+        patch.object(embeddings.async_client, "embeddings") as mock_embeddings,
+        patch.object(embeddings.container, "create_item") as mock_create_item,
+    ):
+        mock_embeddings.create = AsyncMock(return_value=response)
+        result = await embeddings.AzureEmbeddingWrapper().aembed_query("query")
+
+    mock_embeddings.create.assert_awaited_once()
+    mock_create_item.assert_called_once()
+    assert result == [0.1, 0.2]
+
+
+async def test_async_hybrid_search():
+    mock_client = type("SearchClientStub", (), {})()
+    mock_client.search = AsyncMock()
+
+    async def iter_results():
+        yield {"title": "Policy", "chunk": "Policy content"}
+
+    mock_client.search.return_value = iter_results()
+    class AsyncSearchClientContext:
+        async def __aenter__(self):
+            return mock_client
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return None
+
+    mock_search_client = AsyncSearchClientContext()
+
+    with patch.object(
+        hybrid_rag_agent,
+        "SearchClient",
+        return_value=mock_search_client,
+    ) as search_client_factory:
+        results = await hybrid_rag_agent.hybrid_search("policy question")
+
+    search_client_factory.assert_called_once()
+    mock_client.search.assert_awaited_once()
+    assert results == [{"title": "Policy", "chunk": "Policy content"}]
+
+
+async def test_hybrid_rag_agent_async():
+    state = {
+        "user_input": "policy question",
+        "task_prompt": "policy question",
+        "current_task": {
+            "id": "knowledge-task",
+            "intent": "knowledge_search",
+            "dependencies": [],
+        },
+        "thread_id": "test-hybrid-thread",
+    }
+
+    class FakeEmbeddingWrapper:
+        async def aembed_query(self, query):
+            return [0.1, 0.2]
+
+    async def run_sync_in_thread(function, *args):
+        return function(*args)
+
+    with (
+        patch.object(hybrid_rag_agent, "get_cached_response", return_value=None),
+        patch.object(
+            hybrid_rag_agent,
+            "get_semantic_cached_response",
+            return_value=None,
+        ),
+        patch.object(
+            hybrid_rag_agent,
+            "AzureEmbeddingWrapper",
+            return_value=FakeEmbeddingWrapper(),
+        ),
+        patch.object(
+            hybrid_rag_agent,
+            "hybrid_search",
+            new=AsyncMock(return_value=[{"chunk": "policy"}]),
+        ) as mock_search,
+        patch.object(
+            hybrid_rag_agent,
+            "generate_response",
+            new=AsyncMock(return_value="policy answer"),
+        ) as mock_generate,
+        patch.object(
+            hybrid_rag_agent.asyncio,
+            "to_thread",
+            new=AsyncMock(side_effect=run_sync_in_thread),
+        ),
+    ):
+        result = await hybrid_rag_agent.hybrid_rag_agent(state)
+
+    mock_search.assert_awaited_once_with("policy question")
+    mock_generate.assert_awaited_once_with(
+        "policy question",
+        [{"chunk": "policy"}],
+        "test-hybrid-thread",
+    )
+    assert result["agent_result"] == ["policy answer"]
+
+
+async def test_hybrid_response_and_rating_are_async():
+    answer = AIMessage(
+        content="Policy answer [1]",
+        response_metadata={
+            "token_usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 4,
+                "total_tokens": 9,
+            },
+            "model_name": "test-model",
+            "finish_reason": "stop",
+        },
+    )
+    rating = AIMessage(
+        content='{"groundedness": 5, "relevance": 5, "completeness": 4}',
+        response_metadata={
+            "token_usage": {
+                "prompt_tokens": 6,
+                "completion_tokens": 3,
+                "total_tokens": 9,
+            },
+            "model_name": "test-model",
+            "finish_reason": "stop",
+        },
+    )
+
+    with (
+        patch.object(hybrid_rag_helper, "llm") as mock_llm,
+        patch.object(
+            hybrid_rag_helper.container,
+            "create_item",
+        ) as mock_create_item,
+    ):
+        mock_llm.ainvoke = AsyncMock(side_effect=[answer, rating])
+        result = await hybrid_rag_helper.generate_response(
+            "policy question",
+            [{"title": "Policy", "chunk": "Policy content"}],
+            "test-thread",
+        )
+
+    assert mock_llm.ainvoke.await_count == 2
+    assert mock_create_item.call_count == 2
+    assert result == "Policy answer [1]"
+
+
 async def test_workflow_awaits_planner():
     plan = {
         "tasks": [
@@ -295,6 +456,10 @@ async def main():
     await test_rag_uses_async_retrieval_and_model()
     await test_async_vector_retrieval()
     await test_rag_response_uses_async_model()
+    await test_async_query_embedding()
+    await test_async_hybrid_search()
+    await test_hybrid_rag_agent_async()
+    await test_hybrid_response_and_rating_are_async()
     supervisor_graph.chat_agent.chat_agent = fake_chat_agent
     await test_workflow_awaits_planner()
     await test_workflow_awaits_async_rag_node()

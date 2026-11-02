@@ -1,5 +1,5 @@
 import os
-from openai import AzureOpenAI
+from openai import AsyncAzureOpenAI, AzureOpenAI
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 from dotenv import load_dotenv
 
@@ -15,6 +15,12 @@ EMBED_MODEL = os.getenv("EMBED_MODEL")
 
 # Completion model wrapper for Azure-deployed legacy models
 client = AzureOpenAI(
+    api_key=AZURE_API_KEY,
+    api_version=API_VERSION,
+    azure_endpoint=API_ENDPOINT
+)
+
+async_client = AsyncAzureOpenAI(
     api_key=AZURE_API_KEY,
     api_version=API_VERSION,
     azure_endpoint=API_ENDPOINT

@@ -1,7 +1,7 @@
-from urllib import response
+import asyncio
 
 from langchain_core.embeddings import Embeddings
-from config.azure_config import client, EMBED_MODEL
+from config.azure_config import async_client, client, EMBED_MODEL
 from utils.tracing import tracer
 from opentelemetry import trace
 import uuid
@@ -48,4 +48,20 @@ class AzureEmbeddingWrapper(Embeddings):
 
             embedding = response.data[0].embedding or ""
             trace.get_current_span().set_attribute("embedding.len", len(embedding) if hasattr(embedding, '__len__') else 0)
+            return embedding
+
+    async def aembed_query(self, text):
+        with tracer.start_as_current_span("embed.query", attributes={"text_len": len(str(text) or "")}):
+            response = await async_client.embeddings.create(
+                model=EMBED_MODEL,
+                input=text
+            )
+
+            await asyncio.to_thread(self.add_usage_tracing, response)
+
+            embedding = response.data[0].embedding or ""
+            trace.get_current_span().set_attribute(
+                "embedding.len",
+                len(embedding) if hasattr(embedding, "__len__") else 0
+            )
             return embedding
