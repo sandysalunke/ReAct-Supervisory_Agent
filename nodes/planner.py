@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 import uuid
 from datetime import datetime, UTC
-from helpers.cosmos_db_client import container
+from helpers.cosmos_db_client import async_container
 from utils.tracing import tracer
 from opentelemetry import trace
 
@@ -29,7 +29,7 @@ async def create_plan(
                 - Conversational and generative requests such as writing, rewriting, brainstorming, explanations, and recommendations.
                 - Do NOT use for questions about organizational policies, responsibilities, procedures, processes, standards, products
                 or internal documentation.
-                - When uncertain between chat and knowledge_base for a factual question, choose knowledge_base.
+                - When uncertain between chat and knowledge_search for an organization-related factual question, choose knowledge_search.
             database_search
                 - Retrieve data from database.
             file_reasoning
@@ -38,7 +38,7 @@ async def create_plan(
             knowledge_search
                 - A user does NOT need to explicitly mention "enterprise knowledge", "knowledge base", "company documents", or "search".
                 - Questions asking about organizational responsibilities, ownership, policies, procedures, processes, standards, products, business rules, internal terminology, or "who is responsible for X" should be treated as enterprise knowledge questions unless the user explicitly refers to an uploaded file.
-                - For ambiguous factual questions that could reasonably refer to the user's organization, prefer knowledge_base over chat.
+                - For ambiguous factual questions that could reasonably refer to the user's organization, prefer knowledge_search over chat.
                 - Use chat only when the question is clearly general/public knowledge or is a generative/conversational task.
             excel_analysis
                 - Analyze uploaded spreadsheet/excel data.
@@ -56,7 +56,11 @@ async def create_plan(
 
         Rules:
             - Determine the tasks required to achieve user goal.
-            - Choose appropriate tasks (intents) based on file extension when file path is provided 
+            - Route from the current USER GOAL first. The uploaded file path only indicates that a file is available; it does not mean the user is asking about that file.
+            - Choose file_reasoning only when the current USER GOAL explicitly asks to read, summarize, analyze, or answer from the uploaded document, or uses a clear reference such as "this file" or "the document I uploaded".
+            - If the current USER GOAL asks about organizational policies, procedures, responsibilities, products, or internal business rules, choose knowledge_search even when an unrelated document is attached. Do not select file_reasoning just because an uploaded file path is present.
+            - When a request explicitly asks to compare or combine the uploaded document with organization knowledge, include both file_reasoning and knowledge_search as separate tasks and set dependencies only when one task needs the other's result.
+            - Choose file-type-specific intents such as excel_analysis, image_to_text, or meeting_assistant only when the current USER GOAL requests work on the uploaded file and its extension matches that intent.
             - Assign unique ids.
             - Specify the prompt
             - Specify dependencies.
@@ -88,8 +92,7 @@ async def create_plan(
         trace.get_current_span().set_attribute("execution_plan", execution_plan)
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        await asyncio.to_thread(
-            container.create_item,
+        await async_container.create_item(
             {
                 "id": str(uuid.uuid4()),
                 "timestamp": datetime.now(UTC).isoformat(),
@@ -100,7 +103,7 @@ async def create_plan(
                 "completion_tokens": usage["completion_tokens"],
                 "total_tokens": usage["total_tokens"],
                 "finish_reason": result.response_metadata["finish_reason"],
-            },
+            }
         )
 
         await asyncio.to_thread(

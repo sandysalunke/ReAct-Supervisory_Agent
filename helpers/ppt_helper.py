@@ -3,8 +3,6 @@ from pptx.util import Inches
 from pathlib import Path
 from langchain_core.utils.uuid import uuid7
 
-output_file = f"""./data/uploads/{uuid7()}.pptx"""
-
 # Sample data for testing
 slides = [
     {
@@ -62,6 +60,7 @@ def create_presentation(slides):
     - image
     """
 
+    output_file = f"./data/uploads/{uuid7()}.pptx"
     prs = Presentation()
 
     for slide_data in slides:

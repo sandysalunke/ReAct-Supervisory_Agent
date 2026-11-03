@@ -1,3 +1,4 @@
+import asyncio
 from config.azure_config import llm
 from agent_state.agent_state import AgentState
 from helpers.ppt_helper import create_presentation
@@ -24,7 +25,7 @@ slides_data_structure = {
 }
 
 # chat_agent - Added as node in supervisor agent graph
-def ppt_agent(state: AgentState):
+async def ppt_agent(state: AgentState):
     """Use this agent to create power point (ppt) presentation"""
     print("\n===== PPT AGENT =====")
 
@@ -56,11 +57,15 @@ def ppt_agent(state: AgentState):
         
     """
 
-    response = llm.invoke(prompt)
+    response = await llm.ainvoke(prompt)
 
-    if response.content:
-        slides = json.loads(response.content)
-        file_name = create_presentation(slides['slides'])
+    if not response.content:
+        raise ValueError("The model returned no presentation content.")
+
+    slides = json.loads(response.content)
+    file_name = await asyncio.to_thread(
+        create_presentation, slides["slides"]
+    )
 
     return {
         "agent_result": [f"Here is your power point presentation: {file_name}" ],

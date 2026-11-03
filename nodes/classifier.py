@@ -1,7 +1,7 @@
 from config.azure_config import llm
 from agent_state.agent_state import AgentState
 
-def classify_intent(state: AgentState) -> AgentState:
+async def classify_intent(state: AgentState) -> AgentState:
     
     prompt = f"""
         You are a workflow planner.
@@ -58,7 +58,7 @@ def classify_intent(state: AgentState) -> AgentState:
         """
     
     # Invoke LLM
-    intent = llm.invoke(prompt).content
+    intent = (await llm.ainvoke(prompt)).content
 
     state["intent"] = intent
 

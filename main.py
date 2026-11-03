@@ -5,6 +5,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMe
 import streamlit as st
 from pathlib import Path
 from helpers import file_operations
+from utils.async_runner import get_async_runner
 
 is_streamlit_app = True
 # is_streamlit_app = False
@@ -61,7 +62,9 @@ if is_streamlit_app:
     if prompt:
         if uploaded_file:
             # save file here
-            uploaded_file_path = file_operations.save_uploaded_file(uploaded_file)
+            uploaded_file_path = get_async_runner().run(
+                asyncio.to_thread(file_operations.save_uploaded_file, uploaded_file)
+            )
             st.session_state.uploaded_file_path = uploaded_file_path
         
         st.chat_message("user").write(prompt)
@@ -82,7 +85,7 @@ if is_streamlit_app:
                             "chat_history": st.session_state.chat_history
                         }
                         workflow_service = WorkflowService(request)
-                        result = asyncio.run(
+                        result = get_async_runner().run(
                             workflow_service.resume(prompt, thread_id)
                         )
                     else:
@@ -93,7 +96,7 @@ if is_streamlit_app:
                             "chat_history": st.session_state.chat_history
                         }
                         workflow_service = WorkflowService(request)
-                        result = asyncio.run(
+                        result = get_async_runner().run(
                             workflow_service.invoke(request)
                         )
                 

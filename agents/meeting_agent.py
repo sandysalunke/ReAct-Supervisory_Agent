@@ -1,57 +1,71 @@
+import asyncio
 from agent_state.agent_state import AgentState
 from pathlib import Path
-from config.azure_config import client, CHAT_MODEL, WHISPER_MODEL
+from config.azure_config import async_client, CHAT_MODEL, WHISPER_MODEL
 import glob
 import imageio_ffmpeg
 import os
-import subprocess
+from uuid import uuid4
 
-def chunk_audio_file(file_path):
-    file_size = os.path.getsize(file_path)
+
+async def chunk_audio_file(file_path):
+    file_size = await asyncio.to_thread(os.path.getsize, file_path)
     MAX_SIZE = 25 * 1024 * 1024
     
     if file_size <= MAX_SIZE:
         return [file_path]
 
-    chunks = []
-    try:
-        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-        subprocess.run([
-            ffmpeg,
-            "-i", file_path,
-            "-vn",
-            "-f", "segment",
-            "-segment_time", "300",
-            "-c:a", "libmp3lame",
-            "./data/uploads/audio/chunk_%03d.mp3"
-        ], check=True)
-        chunks = sorted(glob.glob("./data/uploads/audio/chunk_*.mp3"))
-    except Exception:
-        import traceback
-        traceback.print_exc()
-            
-    return chunks
+    output_dir = Path("./data/uploads/audio")
+    await asyncio.to_thread(output_dir.mkdir, parents=True, exist_ok=True)
+    output_pattern = output_dir / f"{uuid4().hex}_chunk_%03d.mp3"
+    ffmpeg = await asyncio.to_thread(imageio_ffmpeg.get_ffmpeg_exe)
+    process = await asyncio.create_subprocess_exec(
+        ffmpeg,
+        "-i", file_path,
+        "-vn",
+        "-f", "segment",
+        "-segment_time", "300",
+        "-c:a", "libmp3lame",
+        str(output_pattern),
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await process.communicate()
+    if process.returncode:
+        raise RuntimeError(
+            f"FFmpeg failed to chunk meeting audio: {stderr.decode(errors='replace')}"
+        )
+    return await asyncio.to_thread(
+        lambda: sorted(glob.glob(str(output_pattern).replace("%03d", "*")))
+    )
 
 # Whisper LLM to read transcript
-def transcribe_audio(file_path):
-    chunks = chunk_audio_file(file_path)
+async def transcribe_audio(file_path):
+    chunks = await chunk_audio_file(file_path)
     transcripts = []
 
-    for chunk_file in chunks:
+    try:
+        for chunk_file in chunks:
+            chunk_bytes = await asyncio.to_thread(Path(chunk_file).read_bytes)
 
-        response = client.audio.transcriptions.create(
-            model=WHISPER_MODEL,
-            file=open(chunk_file, "rb")
-        )
+            response = await async_client.audio.transcriptions.create(
+                model=WHISPER_MODEL,
+                file=(Path(chunk_file).name, chunk_bytes)
+            )
 
-        transcripts.append(response.text)
+            transcripts.append(response.text)
+    finally:
+        if file_path not in chunks:
+            await asyncio.gather(
+                *(asyncio.to_thread(Path(chunk).unlink, missing_ok=True) for chunk in chunks)
+            )
 
     full_transcript = "\n".join(transcripts)
     return full_transcript
 
 # LLM to process transcript and return structured response 
-def process_meeting(transcript):
-    response = client.chat.completions.create(
+async def process_meeting(transcript):
+    response = await async_client.chat.completions.create(
         model=CHAT_MODEL,  # your deployment name
         messages=[
             {
@@ -79,7 +93,7 @@ def process_meeting(transcript):
     return response.choices[0].message.content
 
 # meeting_agent - Added as node in supervisor agent graph
-def meeting_agent(state: AgentState) -> AgentState:
+async def meeting_agent(state: AgentState) -> AgentState:
     """Use this agent for meeting assistance"""
     print("\n===== MEETING AGENT =====")
 
@@ -90,8 +104,8 @@ def meeting_agent(state: AgentState) -> AgentState:
     file = Path(file_path)
 
     if file.is_file() and file_extension in file_extensions:
-        transcript = transcribe_audio(file_path)
-        result = process_meeting(transcript)
+        transcript = await transcribe_audio(file_path)
+        result = await process_meeting(transcript)
     else:
         result = "I can not find the appropriate file, please try uploading a file again."
 

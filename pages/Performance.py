@@ -2,13 +2,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import pandas as pd
-from helpers.cosmos_db_client import container
+from helpers.cosmos_db_client import query_items
 import streamlit as st
+from utils.async_runner import get_async_runner
 
-items = list(
-    container.query_items(
-        query="SELECT * FROM c WHERE IS_DEFINED(c.groundedness) AND IS_DEFINED(c.relevance) AND IS_DEFINED(c.completeness)",
-        enable_cross_partition_query=True
+items = get_async_runner().run(
+    query_items(
+        "SELECT * FROM c WHERE IS_DEFINED(c.groundedness) "
+        "AND IS_DEFINED(c.relevance) AND IS_DEFINED(c.completeness)"
     )
 )
 

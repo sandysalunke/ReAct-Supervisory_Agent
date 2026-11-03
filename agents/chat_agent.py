@@ -1,4 +1,3 @@
-import asyncio
 import json
 from config.azure_config import llm
 from utils.tracing import tracer
@@ -8,7 +7,7 @@ from langgraph.types import interrupt
 from helpers.dependency_manager import get_dependency_results
 import uuid
 from datetime import datetime, UTC
-from helpers.cosmos_db_client import container
+from helpers.cosmos_db_client import async_container
 
 # chat_agent - Added as node in supervisor agent graph
 async def chat_agent(state: AgentState):
@@ -48,8 +47,7 @@ async def chat_agent(state: AgentState):
         trace.get_current_span().set_attribute("llm.finish_reason", response.response_metadata["finish_reason"])
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        await asyncio.to_thread(
-            container.create_item,
+        await async_container.create_item(
             {
                 "id": str(uuid.uuid4()),
                 "timestamp": datetime.now(UTC).isoformat(),
@@ -60,7 +58,7 @@ async def chat_agent(state: AgentState):
                 "completion_tokens": usage["completion_tokens"],
                 "total_tokens": usage["total_tokens"],
                 "finish_reason": response.response_metadata["finish_reason"],
-            },
+            }
         )
 
         if state.get("human_comment"):

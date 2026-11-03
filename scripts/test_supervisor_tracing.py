@@ -22,7 +22,12 @@ from agents import hybrid_rag_agent
 from agents import sql_agent
 from agents import excel_agent
 from agents import ocr_agent
+from agents import meeting_agent, image_agent, ppt_agent
+from nodes import classifier
+from helpers import ppt_helper
+from utils.async_runner import AsyncLoopRunner
 from helpers import embeddings, hybrid_rag_helper
+from helpers import cosmos_db_client
 from tools import excel_tools
 
 
@@ -52,16 +57,65 @@ async def test_planner_async():
 
     with (
         patch.object(planner, "llm") as mock_llm,
-        patch.object(planner.container, "create_item") as mock_create_item,
+        patch.object(
+            planner.async_container,
+            "create_item",
+            new=AsyncMock(),
+        ) as mock_create_item,
         patch.object(planner, "save_execution_plan") as mock_save_plan,
     ):
         mock_llm.ainvoke = AsyncMock(return_value=response)
         result = await planner.create_plan("test-thread", "Say hello", None)
 
     mock_llm.ainvoke.assert_awaited_once()
-    mock_create_item.assert_called_once()
+    mock_create_item.assert_awaited_once()
     mock_save_plan.assert_called_once_with("test-thread", plan)
     assert result == plan
+
+
+async def test_planner_prompt_prioritizes_current_goal_over_attachment():
+    plan = {
+        "tasks": [
+            {
+                "id": "knowledge-task",
+                "intent": "knowledge_search",
+                "prompt": "Who is eligible for maternity leave according to our policy?",
+                "dependencies": [],
+            }
+        ]
+    }
+    response = AIMessage(
+        content=json.dumps(plan),
+        response_metadata={
+            "token_usage": {
+                "prompt_tokens": 4,
+                "completion_tokens": 6,
+                "total_tokens": 10,
+            },
+            "model_name": "test-model",
+            "finish_reason": "stop",
+        },
+    )
+    with (
+        patch.object(planner, "llm") as mock_llm,
+        patch.object(
+            planner.async_container,
+            "create_item",
+            new=AsyncMock(),
+        ),
+        patch.object(planner, "save_execution_plan"),
+    ):
+        mock_llm.ainvoke = AsyncMock(return_value=response)
+        result = await planner.create_plan(
+            "test-policy-thread",
+            "Who is eligible for maternity leave according to our policy?",
+            "data/uploads/unrelated.pdf",
+        )
+
+    planner_prompt = mock_llm.ainvoke.await_args.args[0]
+    assert "uploaded file path only indicates that a file is available" in planner_prompt
+    assert "choose knowledge_search even when an unrelated document is attached" in planner_prompt
+    assert result["tasks"][0]["intent"] == "knowledge_search"
 
 
 async def test_chat_agent_async():
@@ -91,13 +145,17 @@ async def test_chat_agent_async():
 
     with (
         patch.object(supervisor_graph.chat_agent, "llm") as mock_llm,
-        patch.object(supervisor_graph.chat_agent.container, "create_item") as mock_create_item,
+        patch.object(
+            supervisor_graph.chat_agent.async_container,
+            "create_item",
+            new=AsyncMock(),
+        ) as mock_create_item,
     ):
         mock_llm.ainvoke = AsyncMock(return_value=response)
         result = await supervisor_graph.chat_agent.chat_agent(state)
 
     mock_llm.ainvoke.assert_awaited_once()
-    mock_create_item.assert_called_once()
+    mock_create_item.assert_awaited_once()
     assert result["agent_result"] == ["chat response"]
     assert result["task_results"]["chat-task"]["result"] == "chat response"
 
@@ -197,14 +255,37 @@ async def test_async_query_embedding():
 
     with (
         patch.object(embeddings.async_client, "embeddings") as mock_embeddings,
-        patch.object(embeddings.container, "create_item") as mock_create_item,
+        patch.object(
+            embeddings.async_container,
+            "create_item",
+            new=AsyncMock(),
+        ) as mock_create_item,
     ):
         mock_embeddings.create = AsyncMock(return_value=response)
         result = await embeddings.AzureEmbeddingWrapper().aembed_query("query")
 
     mock_embeddings.create.assert_awaited_once()
-    mock_create_item.assert_called_once()
+    mock_create_item.assert_awaited_once()
     assert result == [0.1, 0.2]
+
+
+async def test_cosmos_query_is_async():
+    async def items():
+        yield {"id": "item-1"}
+        yield {"id": "item-2"}
+
+    with patch.object(
+        cosmos_db_client.async_container,
+        "query_items",
+        return_value=items(),
+    ) as mock_query:
+        result = await cosmos_db_client.query_items("SELECT * FROM c")
+
+    mock_query.assert_called_once_with(
+        query="SELECT * FROM c",
+        enable_cross_partition_query=True,
+    )
+    assert result == [{"id": "item-1"}, {"id": "item-2"}]
 
 
 async def test_async_hybrid_search():
@@ -323,8 +404,9 @@ async def test_hybrid_response_and_rating_are_async():
     with (
         patch.object(hybrid_rag_helper, "llm") as mock_llm,
         patch.object(
-            hybrid_rag_helper.container,
+            hybrid_rag_helper.async_container,
             "create_item",
+            new=AsyncMock(),
         ) as mock_create_item,
     ):
         mock_llm.ainvoke = AsyncMock(side_effect=[answer, rating])
@@ -335,7 +417,7 @@ async def test_hybrid_response_and_rating_are_async():
         )
 
     assert mock_llm.ainvoke.await_count == 2
-    assert mock_create_item.call_count == 2
+    assert mock_create_item.await_count == 2
     assert result == "Policy answer [1]"
 
 
@@ -524,6 +606,265 @@ async def test_ocr_agent_async():
     assert result["task_results"]["ocr-task"]["result"] == "recognized text"
 
 
+async def test_meeting_transcription_and_summary_async():
+    transcription = type(
+        "Transcription",
+        (),
+        {"text": "Meeting transcript"},
+    )()
+    summary = type(
+        "MeetingSummary",
+        (),
+        {
+            "choices": [
+                type(
+                    "MeetingChoice",
+                    (),
+                    {
+                        "message": type(
+                            "MeetingMessage",
+                            (),
+                            {"content": "Meeting summary"},
+                        )()
+                    },
+                )()
+            ]
+        },
+    )()
+
+    with (
+        patch.object(
+            meeting_agent,
+            "chunk_audio_file",
+            new=AsyncMock(return_value=["meeting.mp3"]),
+        ),
+        patch.object(
+            meeting_agent.async_client.audio.transcriptions,
+            "create",
+            new=AsyncMock(return_value=transcription),
+        ) as mock_transcribe,
+        patch.object(
+            meeting_agent.async_client.chat.completions,
+            "create",
+            new=AsyncMock(return_value=summary),
+        ) as mock_chat,
+        patch.object(
+            meeting_agent.asyncio,
+            "to_thread",
+            new=AsyncMock(return_value=b"audio-bytes"),
+        ) as mock_to_thread,
+    ):
+        transcript = await meeting_agent.transcribe_audio("meeting.mp3")
+        result = await meeting_agent.process_meeting(transcript)
+
+    mock_to_thread.assert_awaited_once()
+    mock_transcribe.assert_awaited_once_with(
+        model=meeting_agent.WHISPER_MODEL,
+        file=("meeting.mp3", b"audio-bytes"),
+    )
+    mock_chat.assert_awaited_once()
+    assert transcript == "Meeting transcript"
+    assert result == "Meeting summary"
+
+
+async def test_meeting_agent_async():
+    state = {
+        "uploaded_file": "meeting.mp3",
+        "current_task": {
+            "id": "meeting-task",
+            "intent": "meeting_assistant",
+        },
+    }
+
+    with (
+        patch.object(meeting_agent.Path, "is_file", return_value=True),
+        patch.object(
+            meeting_agent,
+            "transcribe_audio",
+            new=AsyncMock(return_value="transcript"),
+        ) as mock_transcribe,
+        patch.object(
+            meeting_agent,
+            "process_meeting",
+            new=AsyncMock(return_value="summary"),
+        ) as mock_process,
+    ):
+        result = await meeting_agent.meeting_agent(state)
+
+    mock_transcribe.assert_awaited_once_with("meeting.mp3")
+    mock_process.assert_awaited_once_with("transcript")
+    assert result["agent_result"] == ["summary"]
+
+
+async def test_image_generation_is_async():
+    prompt_response = AIMessage(
+        content="refined image prompt",
+        response_metadata={
+            "token_usage": {
+                "prompt_tokens": 2,
+                "completion_tokens": 3,
+                "total_tokens": 5,
+            },
+            "model_name": "test-model",
+            "finish_reason": "stop",
+        },
+    )
+    image_result = type(
+        "ImageResult",
+        (),
+        {
+            "usage": type(
+                "ImageUsage",
+                (),
+                {"input_tokens": 1, "output_tokens": 2, "total_tokens": 3},
+            )(),
+            "data": [
+                type(
+                    "ImageData",
+                    (),
+                    {"b64_json": "aW1hZ2UtYnl0ZXM="},
+                )()
+            ],
+        },
+    )()
+
+    async def run_in_thread(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    with (
+        patch.object(image_agent, "llm") as mock_llm,
+        patch.object(image_agent, "async_client") as mock_async_client,
+        patch.object(
+            image_agent.async_container,
+            "create_item",
+            new=AsyncMock(),
+        ) as mock_create_item,
+        patch.object(image_agent.asyncio, "to_thread", new=AsyncMock(side_effect=run_in_thread)),
+        patch.object(image_agent, "_write_image") as mock_write,
+    ):
+        mock_llm.ainvoke = AsyncMock(return_value=prompt_response)
+        mock_async_client.images.generate = AsyncMock(return_value=image_result)
+        generated_prompt = await image_agent.generate_prompt(
+            "image-thread", "Create a graphic", {}, []
+        )
+        image_path = await image_agent.generate_image(
+            "image-thread", generated_prompt
+        )
+
+    mock_llm.ainvoke.assert_awaited_once()
+    mock_async_client.images.generate.assert_awaited_once()
+    assert mock_create_item.await_count == 2
+    mock_write.assert_called_once()
+    assert image_path.endswith(".png")
+
+
+async def test_image_agent_async():
+    state = {
+        "user_input": "Create a graphic",
+        "task_prompt": "Create a graphic",
+        "current_task": {
+            "id": "image-task",
+            "intent": "image_generation",
+            "dependencies": [],
+        },
+        "task_results": {},
+        "chat_history": [],
+        "thread_id": "image-thread",
+    }
+
+    with (
+        patch.object(
+            image_agent,
+            "generate_prompt",
+            new=AsyncMock(return_value="refined prompt"),
+        ) as mock_prompt,
+        patch.object(
+            image_agent,
+            "generate_image",
+            new=AsyncMock(return_value="image.png"),
+        ) as mock_generate,
+    ):
+        result = await image_agent.image_agent(state)
+
+    mock_prompt.assert_awaited_once()
+    mock_generate.assert_awaited_once_with("image-thread", "refined prompt")
+    assert result["agent_result"] == ["image.png"]
+
+
+async def test_ppt_agent_and_helper_async_boundary():
+    slides = {"slides": [{"slide_type": "summary", "title": "Summary"}]}
+    response = AIMessage(content=json.dumps(slides))
+
+    async def run_in_thread(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    state = {
+        "user_input": "Create a presentation",
+        "task_prompt": "Create a presentation",
+        "current_task": {
+            "id": "ppt-task",
+            "intent": "ppt_creation",
+            "dependencies": [],
+        },
+        "task_results": {},
+        "chat_history": [],
+    }
+
+    with (
+        patch.object(ppt_agent, "llm") as mock_llm,
+        patch.object(ppt_agent, "create_presentation", return_value="deck.pptx") as mock_create,
+        patch.object(ppt_agent.asyncio, "to_thread", new=AsyncMock(side_effect=run_in_thread)),
+    ):
+        mock_llm.ainvoke = AsyncMock(return_value=response)
+        result = await ppt_agent.ppt_agent(state)
+
+    mock_llm.ainvoke.assert_awaited_once()
+    mock_create.assert_called_once_with(slides["slides"])
+    assert result["agent_result"] == ["Here is your power point presentation: deck.pptx"]
+
+
+def test_presentation_paths_are_unique_per_call():
+    with (
+        patch.object(ppt_helper, "Presentation") as mock_presentation,
+        patch.object(ppt_helper, "uuid7", side_effect=["first-deck", "second-deck"]),
+    ):
+        first_path = ppt_helper.create_presentation([])
+        second_path = ppt_helper.create_presentation([])
+
+    assert first_path == "./data/uploads/first-deck.pptx"
+    assert second_path == "./data/uploads/second-deck.pptx"
+    assert mock_presentation.return_value.save.call_args_list[0].args == (
+        first_path,
+    )
+    assert mock_presentation.return_value.save.call_args_list[1].args == (
+        second_path,
+    )
+
+
+def test_async_loop_runner_reuses_loop():
+    runner = AsyncLoopRunner()
+
+    async def current_loop_id():
+        return id(asyncio.get_running_loop())
+
+    try:
+        first_loop_id = runner.run(current_loop_id())
+        second_loop_id = runner.run(current_loop_id())
+        assert first_loop_id == second_loop_id
+    finally:
+        runner.close()
+
+
+async def test_classifier_uses_async_model():
+    state = {"user_input": "look up customer orders"}
+    with patch.object(classifier, "llm") as mock_llm:
+        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="database_search"))
+        result = await classifier.classify_intent(state)
+
+    mock_llm.ainvoke.assert_awaited_once()
+    assert result["intent"] == "database_search"
+
+
 async def test_workflow_awaits_planner():
     plan = {
         "tasks": [
@@ -640,12 +981,14 @@ def write_plan(thread_id: str):
 
 async def main():
     await test_planner_async()
+    await test_planner_prompt_prioritizes_current_goal_over_attachment()
     await test_chat_agent_async()
     await test_rag_agent_async()
     await test_rag_uses_async_retrieval_and_model()
     await test_async_vector_retrieval()
     await test_rag_response_uses_async_model()
     await test_async_query_embedding()
+    await test_cosmos_query_is_async()
     await test_async_hybrid_search()
     await test_hybrid_rag_agent_async()
     await test_hybrid_response_and_rating_are_async()
@@ -655,6 +998,14 @@ async def main():
     await test_excel_tools_are_async()
     await test_ocr_uses_async_client_and_file_io()
     await test_ocr_agent_async()
+    await test_meeting_transcription_and_summary_async()
+    await test_meeting_agent_async()
+    await test_image_generation_is_async()
+    await test_image_agent_async()
+    await test_ppt_agent_and_helper_async_boundary()
+    test_presentation_paths_are_unique_per_call()
+    test_async_loop_runner_reuses_loop()
+    await test_classifier_uses_async_model()
     supervisor_graph.chat_agent.chat_agent = fake_chat_agent
     await test_workflow_awaits_planner()
     await test_workflow_awaits_async_rag_node()

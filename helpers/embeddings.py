@@ -1,12 +1,10 @@
-import asyncio
-
 from langchain_core.embeddings import Embeddings
 from config.azure_config import async_client, client, EMBED_MODEL
 from utils.tracing import tracer
 from opentelemetry import trace
 import uuid
 from datetime import datetime, UTC
-from helpers.cosmos_db_client import container
+from helpers.cosmos_db_client import async_container, container
 
 class AzureEmbeddingWrapper(Embeddings):
 
@@ -57,7 +55,17 @@ class AzureEmbeddingWrapper(Embeddings):
                 input=text
             )
 
-            await asyncio.to_thread(self.add_usage_tracing, response)
+            await async_container.create_item({
+                "id": str(uuid.uuid4()),
+                "timestamp": datetime.now(UTC).isoformat(),
+                "agent": "query_embedding",
+                "thread_id": "",
+                "model": response.model,
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": "",
+                "total_tokens": response.usage.total_tokens,
+                "finish_reason": "",
+            })
 
             embedding = response.data[0].embedding or ""
             trace.get_current_span().set_attribute(

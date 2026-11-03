@@ -22,9 +22,11 @@
 
 ### Async workflow
 - The Streamlit UI remains synchronous, but the LangGraph workflow uses async graph invocation (`ainvoke`) and async task nodes.
-- The planner, chat agent, uploaded-document RAG, hybrid knowledge search, SQL agent, Excel analysis, and OCR use async model/agent APIs; blocking document parsing, image file I/O, vector-store setup, local cache access, SQLite setup, and dataframe/code execution run in worker threads. Other synchronous agents also run in worker threads.
-- The sync-only UI bridges into the async workflow with `asyncio.run` for each submitted request.
-- Migrate remaining integrations to native async SDKs one agent at a time, keeping blocking file and CPU work off the event loop.
+- Streamlit uses a shared background event loop so shared async SDK clients stay on one loop across UI reruns.
+- Planner, chat, uploaded-document and hybrid RAG, SQL, Excel, OCR, meeting, image-generation, PowerPoint, classifier, and Cosmos usage/dashboard paths now use async APIs.
+- Blocking document/image/audio I/O, vector-store and SQLite setup, local cache access, PowerPoint rendering, and dataframe/code execution run in worker threads; large audio chunking uses an async FFmpeg subprocess.
+- The sync-only UI submits workflow coroutines to the shared background event loop and waits for their results.
+- Summary/state assembly remains synchronous because it does no network or blocking file work.
       
 ### Architecture:
 ```python
@@ -71,16 +73,16 @@
 
 ### Sample Prompts:
 Excel + SQL + Chat
-Compare the region-wise revenue from the uploaded Excel report with the system records. Identify discrepancies, explain the likely causes, and summarize the findings.
+- Compare the region-wise revenue from the uploaded Excel report with the system records. Identify discrepancies, explain the likely causes, and summarize the findings.
 
 Excel + SQL + Chart + PowerPoint
-Analyze revenue trends from the uploaded Excel report and compare them with system records. Create visualizations for major variances and generate an executive PowerPoint presentation summarizing your findings.
+- Analyze revenue trends from the uploaded Excel report and compare them with system records. Create visualizations for major variances and generate an executive PowerPoint presentation summarizing your findings.
 
 Meeting Audio + Action Items + PowerPoint
-Analyze the uploaded meeting recording, extract all action items with owners and due dates, identify key risks discussed, and create a management presentation.
+- Analyze the uploaded meeting recording, extract all action items with owners and due dates, identify key risks discussed, and create a management presentation.
 
 OCR + RAG + Summary
-Extract the text from the image, compare it with the uploaded policy document, identify inconsistencies, and provide a summary.
+- Extract the text from the image, compare it with the uploaded policy document, identify inconsistencies, and provide a summary.
 
 Image + PowerPoint
-Generate a professional infographic showing AI adoption trends and then create a 5-slide executive presentation explaining the infographic.
+- Generate a professional infographic showing AI adoption trends and then create a 5-slide executive presentation explaining the infographic.

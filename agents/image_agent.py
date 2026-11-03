@@ -1,6 +1,7 @@
+import asyncio
 import json
 from agent_state.agent_state import AgentState
-from config.azure_config import llm, client, IMAGE_MODEL
+from config.azure_config import llm, async_client, IMAGE_MODEL
 from utils.tracing import tracer
 from opentelemetry import trace
 import base64
@@ -8,10 +9,11 @@ from datetime import datetime
 from helpers.dependency_manager import get_dependency_results
 import uuid
 from datetime import datetime, UTC
-from helpers.cosmos_db_client import container
+from helpers.cosmos_db_client import async_container
+from pathlib import Path
 
 # Generate the prompt that considers dependency_results and chat_history
-def generate_prompt(thread_id, task_prompt, dependency_results, chat_history):
+async def generate_prompt(thread_id, task_prompt, dependency_results, chat_history):
     prompt = f"""
         You are an Image Generation Agent.
 
@@ -41,7 +43,7 @@ def generate_prompt(thread_id, task_prompt, dependency_results, chat_history):
         - Create professional, detailed, visually rich prompts.
         """
     with tracer.start_as_current_span("agent.image.generate_prompt", attributes={"llm_used": True}):
-        response = llm.invoke(prompt)
+        response = await llm.ainvoke(prompt)
 
         # Add traces in Cosmos DB for cost observability and monitoring
         usage = response.response_metadata["token_usage"]
@@ -53,29 +55,31 @@ def generate_prompt(thread_id, task_prompt, dependency_results, chat_history):
         trace.get_current_span().set_attribute("prompt_length", len(response.content))
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        container.create_item({
-            "id": str(uuid.uuid4()),
-            "timestamp": datetime.now(UTC).isoformat(),
-            "agent": "image_agent",
-            "thread_id": thread_id,
-            "model": response.response_metadata["model_name"],
-            "prompt_tokens": usage["prompt_tokens"],
-            "completion_tokens": usage["completion_tokens"],
-            "total_tokens": usage["total_tokens"],
-            "finish_reason": response.response_metadata["finish_reason"],
-        })
+        await async_container.create_item(
+            {
+                "id": str(uuid.uuid4()),
+                "timestamp": datetime.now(UTC).isoformat(),
+                "agent": "image_agent",
+                "thread_id": thread_id,
+                "model": response.response_metadata["model_name"],
+                "prompt_tokens": usage["prompt_tokens"],
+                "completion_tokens": usage["completion_tokens"],
+                "total_tokens": usage["total_tokens"],
+                "finish_reason": response.response_metadata["finish_reason"],
+            }
+        )
 
     return response.content;
 
 # LLM to generate image and return base64 data
-def generate_image(thread_id, task_prompt):
+async def generate_image(thread_id, task_prompt):
     with tracer.start_as_current_span("agent.image.generate_image", attributes={
         "llm_used": True, 
         "llm_model": IMAGE_MODEL,
         "prompt_length": len(task_prompt)
         }):
         
-        result = client.images.generate(
+        result = await async_client.images.generate(
             model=IMAGE_MODEL,
             prompt=task_prompt,
             size="1024x1024"
@@ -88,24 +92,25 @@ def generate_image(thread_id, task_prompt):
         trace.get_current_span().set_attribute("image.total_tokens", usage.total_tokens)
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        container.create_item({
-            "id": str(uuid.uuid4()),
-            "timestamp": datetime.now(UTC).isoformat(),
-            "agent": "image_agent",
-            "thread_id": thread_id,
-            "model": IMAGE_MODEL,
-            "prompt_tokens": usage.input_tokens,
-            "completion_tokens": usage.output_tokens,
-            "total_tokens": usage.total_tokens,
-            "finish_reason": "",
-        })
+        await async_container.create_item(
+            {
+                "id": str(uuid.uuid4()),
+                "timestamp": datetime.now(UTC).isoformat(),
+                "agent": "image_agent",
+                "thread_id": thread_id,
+                "model": IMAGE_MODEL,
+                "prompt_tokens": usage.input_tokens,
+                "completion_tokens": usage.output_tokens,
+                "total_tokens": usage.total_tokens,
+                "finish_reason": "",
+            }
+        )
 
         img_base64 = base64.b64decode(result.data[0].b64_json)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"./data/images/{timestamp}.png"
+        filename = f"./data/images/{timestamp}_{uuid.uuid4().hex}.png"
         if img_base64:
-            with open(filename, "wb") as f:
-                f.write(img_base64)
+            await asyncio.to_thread(_write_image, filename, img_base64)
             trace.get_current_span().set_attribute("image.generated", True)
             trace.get_current_span().set_attribute("image.filename", filename)
             
@@ -115,8 +120,14 @@ def generate_image(thread_id, task_prompt):
 
         return filename
 
+
+def _write_image(filename, image_bytes):
+    path = Path(filename)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(image_bytes)
+
 # image_agent - Added as node in supervisor agent graph
-def image_agent(state: AgentState) -> AgentState:
+async def image_agent(state: AgentState) -> AgentState:
     """Use this agent for Image generation"""
     print("\n===== IMAGE GENERATION AGENT =====")
     
@@ -133,8 +144,10 @@ def image_agent(state: AgentState) -> AgentState:
             "intent": current_task.get("intent")
         }):
         dependency_results = get_dependency_results(current_task, task_results)
-        task_prompt = generate_prompt(thread_id, task_prompt, dependency_results, chat_history)
-        result = generate_image(thread_id, task_prompt)
+        task_prompt = await generate_prompt(
+            thread_id, task_prompt, dependency_results, chat_history
+        )
+        result = await generate_image(thread_id, task_prompt)
         
         return {
             "agent_result": [result],
