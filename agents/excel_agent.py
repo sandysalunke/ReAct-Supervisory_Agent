@@ -1,3 +1,4 @@
+import asyncio
 from agent_state.agent_state import AgentState
 from langchain.agents import create_agent
 from helpers.file_operations import read_excel_file
@@ -7,7 +8,7 @@ from pathlib import Path
 from helpers.dependency_manager import get_dependency_results
 
 # excel_agent - Added as node in supervisor agent graph
-def excel_agent(state: AgentState) -> AgentState:
+async def excel_agent(state: AgentState) -> AgentState:
     """Use this agent for excel analytics"""
     print("\n===== EXCEL AGENT =====")
 
@@ -23,7 +24,7 @@ def excel_agent(state: AgentState) -> AgentState:
 
     if file.is_file() and file_extension in file_extensions:
         dependency_results = get_dependency_results(current_task, task_results)
-        data_frame = read_excel_file(file_path)
+        data_frame = await asyncio.to_thread(read_excel_file, file_path)
         tools = create_excel_tools(data_frame, dependency_results)
 
         system_prompt = f"""
@@ -47,7 +48,7 @@ def excel_agent(state: AgentState) -> AgentState:
             system_prompt=system_prompt,
         )
 
-        result = agent.invoke(
+        result = await agent.ainvoke(
             {
                 "messages": [
                     {

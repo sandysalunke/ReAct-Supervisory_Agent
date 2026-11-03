@@ -19,7 +19,11 @@ from nodes import planner
 from agents import rag_agent
 from helpers import rag_helper, vector_db
 from agents import hybrid_rag_agent
+from agents import sql_agent
+from agents import excel_agent
+from agents import ocr_agent
 from helpers import embeddings, hybrid_rag_helper
+from tools import excel_tools
 
 
 async def test_planner_async():
@@ -335,6 +339,191 @@ async def test_hybrid_response_and_rating_are_async():
     assert result == "Policy answer [1]"
 
 
+async def test_sql_agent_uses_async_executor():
+    sql_database = object()
+    executor = type("SQLExecutorStub", (), {})()
+    executor.ainvoke = AsyncMock(return_value={"output": "sales answer"})
+
+    async def run_sync_in_thread(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    with (
+        patch.object(sql_agent.SQLDatabase, "from_uri", return_value=sql_database) as mock_from_uri,
+        patch.object(sql_agent, "create_sql_agent", return_value=executor) as mock_create_agent,
+        patch.object(sql_agent.asyncio, "to_thread", new=AsyncMock(side_effect=run_sync_in_thread)),
+    ):
+        result = await sql_agent.ask_sql_llm("sales question", {}, [])
+
+    assert result == "sales answer"
+    mock_from_uri.assert_called_once_with(
+        "sqlite:///sales_multi.db",
+        include_tables=["customers", "orders", "products"],
+    )
+    mock_create_agent.assert_called_once()
+    executor.ainvoke.assert_awaited_once_with({"input": "sales question"})
+
+
+async def test_sql_graph_node_is_async():
+    state = {
+        "user_input": "sales question",
+        "task_prompt": "sales question",
+        "current_task": {
+            "id": "sql-task",
+            "intent": "database_search",
+            "dependencies": [],
+        },
+        "task_results": {},
+        "chat_history": [],
+    }
+
+    with patch.object(
+        sql_agent,
+        "ask_sql_llm",
+        new=AsyncMock(return_value="sales answer"),
+    ) as mock_ask:
+        result = await sql_agent.sql_agent(state)
+
+    mock_ask.assert_awaited_once_with("sales question", {}, [])
+    assert result["agent_result"] == ["sales answer"]
+    assert result["task_results"]["sql-task"]["result"] == "sales answer"
+
+
+async def test_excel_agent_async():
+    import pandas as pd
+
+    state = {
+        "user_input": "sum amount",
+        "task_prompt": "sum amount",
+        "uploaded_file": "report.xlsx",
+        "thread_id": "excel-thread",
+        "current_task": {
+            "id": "excel-task",
+            "intent": "excel_analysis",
+            "dependencies": [],
+        },
+        "task_results": {},
+    }
+    agent_graph = type("ExcelAgentGraph", (), {})()
+    agent_graph.ainvoke = AsyncMock(
+        return_value={"messages": [AIMessage(content="Total: 42")]}
+    )
+    dataframe = pd.DataFrame({"amount": [20, 22]})
+
+    async def run_sync_in_thread(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    with (
+        patch.object(excel_agent.Path, "is_file", return_value=True),
+        patch.object(excel_agent, "read_excel_file", return_value=dataframe) as mock_read,
+        patch.object(excel_agent, "create_excel_tools", return_value=[]) as mock_tools,
+        patch.object(excel_agent, "create_agent", return_value=agent_graph) as mock_create_agent,
+        patch.object(excel_agent.asyncio, "to_thread", new=AsyncMock(side_effect=run_sync_in_thread)),
+    ):
+        result = await excel_agent.excel_agent(state)
+
+    mock_read.assert_called_once_with("report.xlsx")
+    mock_tools.assert_called_once()
+    mock_create_agent.assert_called_once()
+    agent_graph.ainvoke.assert_awaited_once()
+    assert result["agent_result"] == ["Total: 42"]
+    assert result["task_results"]["excel-task"]["result"] == "Total: 42"
+
+
+async def test_excel_tools_are_async():
+    import pandas as pd
+
+    dataframe = pd.DataFrame({"amount": [20, 22]})
+    tools = {
+        excel_tool.name: excel_tool
+        for excel_tool in excel_tools.create_excel_tools(dataframe, {})
+    }
+    responses = [
+        AIMessage(content="result = int(data_frame['amount'].sum())"),
+        AIMessage(content="chart_path = 'chart.png'"),
+    ]
+
+    with patch.object(excel_tools, "llm") as mock_llm:
+        mock_llm.ainvoke = AsyncMock(side_effect=responses)
+        analysis = await tools["analyze_data"].ainvoke(
+            {"question": "sum amount"}
+        )
+        chart = await tools["create_chart"].ainvoke(
+            {"question": "plot amount"}
+        )
+
+    assert analysis == 42
+    assert chart["status"] == "success"
+    assert chart["chart_path"] == "chart.png"
+    assert mock_llm.ainvoke.await_count == 2
+
+
+async def test_ocr_uses_async_client_and_file_io():
+    response = type(
+        "OCRResponse",
+        (),
+        {
+            "choices": [
+                type(
+                    "OCRChoice",
+                    (),
+                    {
+                        "message": type(
+                            "OCRMessage",
+                            (),
+                            {"content": "recognized text"},
+                        )()
+                    },
+                )()
+            ]
+        },
+    )()
+
+    async def run_sync_in_thread(function, *args, **kwargs):
+        assert function is ocr_agent._encode_image
+        return "ZmFrZS1pbWFnZQ=="
+
+    with (
+        patch.object(ocr_agent.async_client.chat.completions, "create", new=AsyncMock(return_value=response)) as mock_create,
+        patch.object(ocr_agent.asyncio, "to_thread", new=AsyncMock(side_effect=run_sync_in_thread)) as mock_to_thread,
+    ):
+        result = await ocr_agent.image_to_text("image.png", "Read the text")
+
+    mock_to_thread.assert_awaited_once_with(ocr_agent._encode_image, "image.png")
+    mock_create.assert_awaited_once()
+    request = mock_create.await_args.kwargs
+    assert request["messages"][0]["content"][0]["text"] == "Read the text"
+    assert request["messages"][0]["content"][1]["image_url"].startswith(
+        "data:image/png;base64,"
+    )
+    assert result == "recognized text"
+
+
+async def test_ocr_agent_async():
+    state = {
+        "user_input": "read image",
+        "task_prompt": "read image",
+        "uploaded_file": "image.png",
+        "current_task": {
+            "id": "ocr-task",
+            "intent": "image_to_text",
+        },
+    }
+
+    with (
+        patch.object(ocr_agent.Path, "is_file", return_value=True),
+        patch.object(
+            ocr_agent,
+            "image_to_text",
+            new=AsyncMock(return_value="recognized text"),
+        ) as mock_image_to_text,
+    ):
+        result = await ocr_agent.ocr_agent(state)
+
+    mock_image_to_text.assert_awaited_once_with("image.png", "read image")
+    assert result["agent_result"] == ["recognized text"]
+    assert result["task_results"]["ocr-task"]["result"] == "recognized text"
+
+
 async def test_workflow_awaits_planner():
     plan = {
         "tasks": [
@@ -460,6 +649,12 @@ async def main():
     await test_async_hybrid_search()
     await test_hybrid_rag_agent_async()
     await test_hybrid_response_and_rating_are_async()
+    await test_sql_agent_uses_async_executor()
+    await test_sql_graph_node_is_async()
+    await test_excel_agent_async()
+    await test_excel_tools_are_async()
+    await test_ocr_uses_async_client_and_file_io()
+    await test_ocr_agent_async()
     supervisor_graph.chat_agent.chat_agent = fake_chat_agent
     await test_workflow_awaits_planner()
     await test_workflow_awaits_async_rag_node()

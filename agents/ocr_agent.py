@@ -1,21 +1,21 @@
 from agent_state.agent_state import AgentState
+import asyncio
 import base64
-from config.azure_config import client, CHAT_MODEL
+from config.azure_config import async_client, CHAT_MODEL
 from pathlib import Path
 
 # OCR LLM to extract text from image 
-def image_to_text(image_path, task_prompt):
-    with open(image_path, "rb") as image_file:
-        image_base64 = base64.b64encode(image_file.read()).decode("utf-8")
-    
-    response = client.chat.completions.create(
+async def image_to_text(image_path, task_prompt):
+    image_base64 = await asyncio.to_thread(_encode_image, image_path)
+
+    response = await async_client.chat.completions.create(
         model=CHAT_MODEL,
         messages=[
             {
                 "role": "user",
                 "content": [
                     {
-                        "type": "text", 
+                        "type": "text",
                         "text": task_prompt
                     },
                     {
@@ -29,8 +29,13 @@ def image_to_text(image_path, task_prompt):
 
     return response.choices[0].message.content
 
+
+def _encode_image(image_path):
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode("utf-8")
+
 # ocr_agent - Added as node in supervisor agent graph
-def ocr_agent(state: AgentState) -> AgentState:
+async def ocr_agent(state: AgentState) -> AgentState:
     """Use this agent for OCR - Image to text conversion"""
     print("\n===== OCR AGENT =====")
 
@@ -43,7 +48,7 @@ def ocr_agent(state: AgentState) -> AgentState:
     file = Path(file_path)
 
     if file.is_file() and file_extension in file_extensions:
-        result = image_to_text(file_path, task_prompt)
+        result = await image_to_text(file_path, task_prompt)
     else:
         result = "I can not find the image, please upload the image to extract the text."
 

@@ -1,3 +1,4 @@
+import asyncio
 import json
 from agent_state.agent_state import AgentState
 from langchain_community.utilities import SQLDatabase
@@ -9,12 +10,13 @@ from helpers.dependency_manager import get_dependency_results
 # Uses SQL agent from langchanin agent_toolkits
 # Langchain SQL agent is capable of generating SQL queries 
 # and translate the result in human language 
-def ask_sql_llm(task_prompt, dependency_results, chat_history):
+async def ask_sql_llm(task_prompt, dependency_results, chat_history):
 
     # SQLite DB connection
-    db = SQLDatabase.from_uri(
+    db = await asyncio.to_thread(
+        SQLDatabase.from_uri,
         "sqlite:///sales_multi.db",
-        include_tables=["customers", "orders", "products"]
+        include_tables=["customers", "orders", "products"],
     )
 
     # Set Rules
@@ -45,21 +47,22 @@ def ask_sql_llm(task_prompt, dependency_results, chat_history):
     """
 
     # SQL Agent
-    sql_agent = create_sql_agent(
+    sql_agent = await asyncio.to_thread(
+        create_sql_agent,
         llm=llm,
         db=db,
         agent_type="openai-tools",
         verbose=True,
         prefix=custom_prefix,
-        suffix=custom_suffix
+        suffix=custom_suffix,
     )
 
-    response = sql_agent.run(task_prompt)
+    response = await sql_agent.ainvoke({"input": task_prompt})
 
-    return response
+    return response["output"]
 
 # sql_agent - Added as node in supervisor agent graph
-def sql_agent(state: AgentState) -> AgentState:
+async def sql_agent(state: AgentState) -> AgentState:
     """Use this agent for Database operations, database search, SQL generation"""
     
     print("\n===== SQL AGENT =====")
@@ -72,7 +75,7 @@ def sql_agent(state: AgentState) -> AgentState:
 
     dependency_results = get_dependency_results(current_task, task_results)
 
-    result = ask_sql_llm(task_prompt, dependency_results, chat_history)
+    result = await ask_sql_llm(task_prompt, dependency_results, chat_history)
 
     return {
         "agent_result": [result],

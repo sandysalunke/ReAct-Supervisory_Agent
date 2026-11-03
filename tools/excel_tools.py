@@ -1,3 +1,4 @@
+import asyncio
 import json
 from langchain.tools import tool
 from langchain_core.utils.uuid import uuid7
@@ -22,7 +23,7 @@ def create_excel_tools(data_frame, dependency_results):
         return prompt
 
     @tool
-    def analyze_data(question: str) -> str:
+    async def analyze_data(question: str) -> str:
         """Analyze dataframe data."""
         
         prompt = f"""
@@ -53,14 +54,14 @@ def create_excel_tools(data_frame, dependency_results):
 
         local_vars = {"data_frame": data_frame}
         safe_globals = {"pd": __import__("pandas")}
-        code = llm.invoke(prompt).content
+        code = (await llm.ainvoke(prompt)).content
 
-        exec(code, safe_globals, local_vars)
+        await asyncio.to_thread(exec, code, safe_globals, local_vars)
 
         return local_vars.get("result", None)
 
     @tool
-    def create_chart(question: str) -> str:
+    async def create_chart(question: str) -> str:
         """Create chart from dataframe."""
 
         prompt = f"""
@@ -95,9 +96,9 @@ def create_excel_tools(data_frame, dependency_results):
 
         local_vars = {"data_frame": data_frame}
         safe_globals = {"pd": __import__("pandas")}
-        code = llm.invoke(prompt).content
+        code = (await llm.ainvoke(prompt)).content
         
-        exec(code, safe_globals, local_vars)
+        await asyncio.to_thread(exec, code, safe_globals, local_vars)
 
         return {
             "status": "success",
