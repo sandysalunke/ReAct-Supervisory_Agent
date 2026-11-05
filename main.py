@@ -1,10 +1,7 @@
 import asyncio
-from utils.tracing import tracer
-from graphs.supervisor_graph import WorkflowService
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 import streamlit as st
 from pathlib import Path
-from helpers import file_operations
 from utils.async_runner import get_async_runner
 
 is_streamlit_app = True
@@ -62,6 +59,8 @@ if is_streamlit_app:
     if prompt:
         if uploaded_file:
             # save file here
+            from helpers import file_operations
+
             uploaded_file_path = get_async_runner().run(
                 asyncio.to_thread(file_operations.save_uploaded_file, uploaded_file)
             )
@@ -73,6 +72,9 @@ if is_streamlit_app:
 
         with spinner_placeholder:
             with st.spinner("Thinking..."):
+                from graphs.supervisor_graph import WorkflowService
+                from utils.tracing import tracer
+
                 with tracer.start_as_current_span("User workflow", attributes={"user.workflow": "Begins"}):
                     if (st.session_state.chat_history and st.session_state.chat_history[-1].additional_kwargs.get("workflow_status") == "INTERRUPTED"):
                         thread_id = st.session_state.chat_history[-1].additional_kwargs.get("thread_id")
@@ -113,6 +115,8 @@ if is_streamlit_app:
         st.rerun()
 else:
     # ==========================================================
+    from graphs.supervisor_graph import WorkflowService
+
     print("\n ===== MAIN =====")
 
     user_input = input("\nHow can I help you? ")

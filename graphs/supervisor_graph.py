@@ -1,13 +1,12 @@
 ####################################
 import asyncio
+import importlib
 import inspect
 import json
 from typing import Annotated
 from agent_state.agent_state import AgentState
 from langgraph.types import interrupt, Command
 from langgraph.graph import StateGraph, START, END
-from agents import chat_agent, hybrid_rag_agent, rag_agent, sql_agent, ocr_agent, meeting_agent, image_agent, excel_agent, summary_agent, ppt_agent, azure_devops_agent
-from nodes.planner import create_plan, get_execution_plan, delete_execution_plan, normalize_execution_plan
 from langchain_core.utils.uuid import uuid7
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -42,6 +41,8 @@ class WorkflowService:
     ###############################################
     # function to build the graph based on the execution plan
     async def build_graph(self) -> AgentState:
+        from nodes import planner
+
         prompt = self.request["user_input"]
         uploaded_file = self.request["uploaded_file"]
     
@@ -49,7 +50,7 @@ class WorkflowService:
         with tracer.start_as_current_span("workflow.build_graph", attributes={"thread_id": self.thread_id, "prompt_length": len(str(prompt) or "")}):
             if self.request.get("workflow_status") == "INTERRUPTED":
                 self.execution_plan = await asyncio.to_thread(
-                    get_execution_plan, self.thread_id
+                    planner.get_execution_plan, self.thread_id
                 )
                 if self.execution_plan is None:
                     checkpoint = self.checkpointer.get_tuple(
@@ -65,10 +66,12 @@ class WorkflowService:
                         "plan was found in the saved plan file or checkpoint."
                     )
             else:
-                self.execution_plan = await create_plan(
+                self.execution_plan = await planner.create_plan(
                     self.thread_id, prompt, uploaded_file
                 )
-            self.execution_plan = normalize_execution_plan(self.execution_plan)
+            self.execution_plan = planner.normalize_execution_plan(
+                self.execution_plan
+            )
             try:
                 task_count = len(self.execution_plan.get("tasks", []))
             except Exception:
@@ -80,32 +83,40 @@ class WorkflowService:
         # Initiate a graph
         graph = StateGraph(AgentState)
     
-        # Map of agents linked to intent returned by planner in execution plan
-        agent_mapp = {
-            "chat": chat_agent.chat_agent,
-            "image_generation": image_agent.image_agent,
-            "file_reasoning": rag_agent.rag_agent,
-            "knowledge_search": hybrid_rag_agent.hybrid_rag_agent,
-            "database_search": sql_agent.sql_agent,
-            "image_to_text": ocr_agent.ocr_agent,
-            "meeting_assistant": meeting_agent.meeting_agent,
-            "excel_analysis": excel_agent.excel_agent,
-            "ppt_creation": ppt_agent.ppt_agent,
-            "azure_devops": azure_devops_agent.azure_devops_agent,
+        agent_modules = {
+            "chat": ("agents.chat_agent", "chat_agent"),
+            "image_generation": ("agents.image_agent", "image_agent"),
+            "file_reasoning": ("agents.rag_agent", "rag_agent"),
+            "knowledge_search": ("agents.hybrid_rag_agent", "hybrid_rag_agent"),
+            "database_search": ("agents.sql_agent", "sql_agent"),
+            "image_to_text": ("agents.ocr_agent", "ocr_agent"),
+            "meeting_assistant": ("agents.meeting_agent", "meeting_agent"),
+            "excel_analysis": ("agents.excel_agent", "excel_agent"),
+            "ppt_creation": ("agents.ppt_agent", "ppt_agent"),
+            "azure_devops": ("agents.azure_devops_agent", "azure_devops_agent"),
         }
+        agent_functions = {}
     
         # Add independent nodes to graph 
         for task in self.execution_plan["tasks"]:
+            intent = task["intent"]
+            if intent not in agent_functions:
+                module_name, function_name = agent_modules[intent]
+                agent_functions[intent] = getattr(
+                    importlib.import_module(module_name), function_name
+                )
             graph.add_node(
                 task["id"],
                 self.create_task_node(
-                    agent_mapp[task["intent"]],
+                    agent_functions[intent],
                     task
                 )
             )
     
         # Add summary_agent node that will always be the last node of the workflow
-        graph.add_node("summarize_result", summary_agent.summary_agent)
+        from agents.summary_agent import summary_agent
+
+        graph.add_node("summarize_result", summary_agent)
     
         # Add edges to the graph
         for task in self.execution_plan["tasks"]:
@@ -194,6 +205,8 @@ class WorkflowService:
                     }
                 }
             )
+            from nodes.planner import delete_execution_plan
+
             await asyncio.to_thread(delete_execution_plan, thread_id)
         return self._build_response(thread_id, result)
 

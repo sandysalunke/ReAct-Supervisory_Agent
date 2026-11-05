@@ -16,7 +16,7 @@ os.environ.setdefault("APPLICATIONINSIGHTS_CONNECTION_STRING", f"Instrumentation
 
 from graphs import supervisor_graph
 from nodes import planner
-from agents import rag_agent
+from agents import chat_agent, rag_agent
 from helpers import rag_helper, vector_db
 from agents import hybrid_rag_agent
 from agents import sql_agent
@@ -320,15 +320,15 @@ async def test_chat_agent_async():
     }
 
     with (
-        patch.object(supervisor_graph.chat_agent, "llm") as mock_llm,
+        patch.object(chat_agent, "llm") as mock_llm,
         patch.object(
-            supervisor_graph.chat_agent.async_container,
+            chat_agent.async_container,
             "create_item",
             new=AsyncMock(),
         ) as mock_create_item,
     ):
         mock_llm.ainvoke = AsyncMock(return_value=response)
-        result = await supervisor_graph.chat_agent.chat_agent(state)
+        result = await chat_agent.chat_agent(state)
 
     mock_llm.ainvoke.assert_awaited_once()
     mock_create_item.assert_awaited_once()
@@ -1059,7 +1059,7 @@ async def test_workflow_awaits_planner():
     }
 
     with patch.object(
-        supervisor_graph,
+        planner,
         "create_plan",
         new=AsyncMock(return_value=plan),
     ) as mock_create_plan:
@@ -1102,12 +1102,12 @@ async def test_workflow_awaits_async_rag_node():
 
     with (
         patch.object(
-            supervisor_graph,
+            planner,
             "create_plan",
             new=AsyncMock(return_value=plan),
         ),
         patch.object(
-            supervisor_graph.rag_agent,
+            rag_agent,
             "rag_agent",
             new=AsyncMock(return_value=rag_result),
         ) as mock_rag_agent,
@@ -1149,12 +1149,12 @@ async def test_workflow_routes_azure_devops_to_agent():
 
     with (
         patch.object(
-            supervisor_graph,
+            planner,
             "create_plan",
             new=AsyncMock(return_value=plan),
         ),
         patch.object(
-            supervisor_graph.azure_devops_agent,
+            azure_devops_agent,
             "azure_devops_agent",
             new=AsyncMock(return_value=ado_result),
         ) as mock_ado_agent,
@@ -1230,7 +1230,7 @@ async def main():
     test_presentation_paths_are_unique_per_call()
     test_async_loop_runner_reuses_loop()
     await test_classifier_uses_async_model()
-    supervisor_graph.chat_agent.chat_agent = fake_chat_agent
+    chat_agent.chat_agent = fake_chat_agent
     await test_workflow_awaits_planner()
     await test_workflow_awaits_async_rag_node()
     await test_workflow_routes_azure_devops_to_agent()
