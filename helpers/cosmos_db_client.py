@@ -32,6 +32,5 @@ async_container = async_database.get_container_client(
 async def query_items(query: str):
     results = async_container.query_items(
         query=query,
-        enable_cross_partition_query=True,
     )
     return [item async for item in results]

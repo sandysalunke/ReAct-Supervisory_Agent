@@ -10,6 +10,17 @@ from helpers.cosmos_db_client import async_container
 from utils.tracing import tracer
 from opentelemetry import trace
 
+
+def normalize_execution_plan(execution_plan: Optional[dict]) -> dict:
+    if not isinstance(execution_plan, dict):
+        raise ValueError("Execution plan must be a dictionary.")
+
+    for task in execution_plan.get("tasks", []):
+        if task.get("dependencies") is None:
+            task["dependencies"] = []
+    return execution_plan
+
+
 async def create_plan(
     thread_id: str, prompt: str, uploaded_file: Optional[str]
 ) -> dict:
@@ -53,9 +64,17 @@ async def create_plan(
                 - Allowed file extensions: ".mp4", ".mkv", ".webm", ".avi", ".mov", ".wmv", ".m4v", ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".wma"
             ppt_creation
                 - Create powerpoint presentation deck
+            azure_devops
+                - Read Azure DevOps projects, work items, repositories and pull requests,
+                  pipelines and builds, wiki pages, and team or iteration information.
+                - Use for requests that explicitly ask about Azure DevOps, ADO, work items,
+                  pull requests, repositories, builds, pipelines, or Azure DevOps wikis.
+                - This capability is read-only.
 
         Rules:
             - Determine the tasks required to achieve user goal.
+            - Route explicit Azure DevOps or ADO data requests to azure_devops, not chat,
+              database_search, or knowledge_search.
             - Route from the current USER GOAL first. The uploaded file path only indicates that a file is available; it does not mean the user is asking about that file.
             - Choose file_reasoning only when the current USER GOAL explicitly asks to read, summarize, analyze, or answer from the uploaded document, or uses a clear reference such as "this file" or "the document I uploaded".
             - If the current USER GOAL asks about organizational policies, procedures, responsibilities, products, or internal business rules, choose knowledge_search even when an unrelated document is attached. Do not select file_reasoning just because an uploaded file path is present.
@@ -80,7 +99,7 @@ async def create_plan(
         # Invoke LLM
         result = await llm.ainvoke(prompt)
 
-        execution_plan = json.loads(result.content)
+        execution_plan = normalize_execution_plan(json.loads(result.content))
 
         # Add traces in AI for observability and monitoring
         usage = result.response_metadata["token_usage"]

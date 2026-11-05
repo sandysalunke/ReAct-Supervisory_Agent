@@ -12,13 +12,20 @@
 - PowerPoint agent
 - Human in the loop (In Chat Agent)
 - Cost Evaluation Dashboard
-- Websearch agent
+- Performance Monitoring Dashboard
+- MCP client-server sample
 
 ### TBD:
 - Document Comparison Agent
-- MCP Server
 - Webserach Agent
-- Integration with JIRA/ADO
+
+### Azure DevOps read-only integration
+- Azure DevOps requests are routed to a dedicated agent that launches Microsoft's local Azure DevOps MCP server over stdio. The hosted MCP endpoint is not used because its Entra dynamic client registration is incompatible with this generic FastMCP client.
+- Configure `AZURE_DEVOPS_ORG` with the organization name (defaults to `selection-navigator`).
+- Install Node.js 20 or later and Azure CLI, then sign in as the user whose access should be used with `az login`. The local server uses `--authentication azcli`; it does not initiate a separate browser sign-in.
+- The MCP server loads only the core, work, work-item, repository, pipeline, wiki, and search domains. The agent additionally filters the tool list and allowed action values to read-only operations.
+- The Azure CLI identity must have permission to read the requested organization, projects, and resources. In a hosted or multi-user deployment, this uses the app host's Azure CLI identity; do not treat it as per-Streamlit-user authentication.
+- Azure DevOps MCP uses the FastMCP client dependency declared in `requirements.txt`.
 
 ### Async workflow
 - The Streamlit UI remains synchronous, but the LangGraph workflow uses async graph invocation (`ainvoke`) and async task nodes.

@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 import uuid
 from langgraph.types import interrupt
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from langchain_core.messages import AIMessage
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +23,7 @@ from agents import sql_agent
 from agents import excel_agent
 from agents import ocr_agent
 from agents import meeting_agent, image_agent, ppt_agent
+from agents import azure_devops_agent
 from nodes import classifier
 from helpers import ppt_helper
 from utils.async_runner import AsyncLoopRunner
@@ -33,6 +34,15 @@ from tools import excel_tools
 
 async def test_planner_async():
     plan = {
+        "tasks": [
+            {
+                "id": "planner-task",
+                "intent": "chat",
+                "prompt": "Say hello",
+            }
+        ]
+    }
+    normalized_plan = {
         "tasks": [
             {
                 "id": "planner-task",
@@ -69,8 +79,11 @@ async def test_planner_async():
 
     mock_llm.ainvoke.assert_awaited_once()
     mock_create_item.assert_awaited_once()
-    mock_save_plan.assert_called_once_with("test-thread", plan)
-    assert result == plan
+    mock_save_plan.assert_called_once_with("test-thread", normalized_plan)
+    assert "Route explicit Azure DevOps or ADO data requests to azure_devops" in (
+        mock_llm.ainvoke.await_args.args[0]
+    )
+    assert result == normalized_plan
 
 
 async def test_planner_prompt_prioritizes_current_goal_over_attachment():
@@ -116,6 +129,169 @@ async def test_planner_prompt_prioritizes_current_goal_over_attachment():
     assert "uploaded file path only indicates that a file is available" in planner_prompt
     assert "choose knowledge_search even when an unrelated document is attached" in planner_prompt
     assert result["tasks"][0]["intent"] == "knowledge_search"
+
+
+async def test_azure_devops_agent_uses_readonly_mcp_tools():
+    class MCPTool:
+        def __init__(self, name, input_schema):
+            self.name = name
+            self.description = name
+            self.input_schema = input_schema
+
+        def model_copy(self, update):
+            return MCPTool(self.name, update["input_schema"])
+
+    tools = [
+        MCPTool(
+            "core_list_projects",
+            {"type": "object", "properties": {}},
+        ),
+        MCPTool(
+            "wit_work_item",
+            {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["get", "update"],
+                    }
+                },
+                "required": ["action"],
+            },
+        ),
+        MCPTool(
+            "wit_work_item_write",
+            {"type": "object", "properties": {}},
+        ),
+    ]
+    tool_response = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "core_list_projects",
+                "args": {},
+                "id": "list-projects-call",
+                "type": "tool_call",
+            }
+        ],
+    )
+    final_response = AIMessage(content="Found project Alpha.")
+
+    class FakeMCPClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def list_tools(self):
+            return tools
+
+        async def call_tool(self, name, arguments):
+            assert name == "core_list_projects"
+            assert arguments == {}
+            return type(
+                "MCPResult",
+                (),
+                {"content": [type("Text", (), {"text": "Alpha"})()]},
+            )()
+
+    fake_client = FakeMCPClient()
+    bound_model = type(
+        "BoundModel",
+        (),
+        {
+            "ainvoke": AsyncMock(
+                side_effect=[tool_response, final_response]
+            ),
+        },
+    )()
+    fake_llm = type("FakeLLM", (), {})()
+    fake_llm.bind_tools = Mock(return_value=bound_model)
+    state = {
+        "user_input": "List my Azure DevOps projects",
+        "task_prompt": "List my Azure DevOps projects",
+        "thread_id": "ado-thread",
+        "current_task": {
+            "id": "ado-task",
+            "intent": "azure_devops",
+            "dependencies": [],
+        },
+        "task_results": {},
+    }
+
+    with (
+        patch.object(
+            azure_devops_agent,
+            "_get_client",
+            return_value=("https://mcp.dev.azure.com/example", fake_client),
+        ),
+        patch.object(azure_devops_agent, "_client_locks", {}),
+        patch.object(azure_devops_agent, "get_dependency_results", return_value={}),
+        patch.object(azure_devops_agent, "llm", fake_llm),
+    ):
+        result = await azure_devops_agent.azure_devops_agent(state)
+
+    assert bound_model.ainvoke.await_args_list[0].args[0][0].content.startswith(
+        "You are an Azure DevOps read-only assistant."
+    )
+    fake_llm.bind_tools.assert_called_once()
+    supplied_tools = fake_llm.bind_tools.call_args.args[0]
+    supplied_by_name = {
+        item["function"]["name"]: item["function"] for item in supplied_tools
+    }
+    assert set(supplied_by_name) == {"core_list_projects", "wit_work_item"}
+    assert supplied_by_name["core_list_projects"]["parameters"] == (
+        tools[0].input_schema
+    )
+    assert supplied_by_name["wit_work_item"]["parameters"]["properties"]["action"][
+        "enum"
+    ] == ["get"]
+    assert bound_model.ainvoke.await_count == 2
+    assert result["agent_result"] == ["Found project Alpha."]
+    assert result["completed_steps"] == ["azure_devops"]
+    assert result["task_results"]["ado-task"]["result"] == "Found project Alpha."
+
+
+async def test_azure_devops_client_uses_local_server_and_azure_cli():
+    with (
+        patch.dict(os.environ, {"AZURE_DEVOPS_ORG": "example"}),
+        patch.object(azure_devops_agent, "_clients", {}),
+        patch.object(
+            azure_devops_agent.shutil,
+            "which",
+            side_effect=lambda name: (
+                r"C:\Node\npx.cmd" if name == "npx" else r"C:\AzureCLI\az.exe"
+            ),
+        ),
+        patch.object(azure_devops_agent.sys, "platform", "win32"),
+        patch.object(azure_devops_agent, "StdioTransport") as transport,
+        patch.object(azure_devops_agent, "Client", return_value="client") as client,
+    ):
+        client_key, result = azure_devops_agent._get_client()
+
+    assert client_key == "stdio:example"
+    assert result == "client"
+    assert transport.call_args.kwargs["command"].lower().endswith("cmd.exe")
+    assert transport.call_args.kwargs["args"] == [
+        "/d",
+        "/c",
+        "npx",
+        "-y",
+        "@azure-devops/mcp",
+        "example",
+        "--authentication",
+        "azcli",
+        "-d",
+        "core",
+        "work",
+        "work-items",
+        "repositories",
+        "pipelines",
+        "wiki",
+        "search",
+    ]
+    client.assert_called_once()
 
 
 async def test_chat_agent_async():
@@ -283,7 +459,6 @@ async def test_cosmos_query_is_async():
 
     mock_query.assert_called_once_with(
         query="SELECT * FROM c",
-        enable_cross_partition_query=True,
     )
     assert result == [{"id": "item-1"}, {"id": "item-2"}]
 
@@ -945,6 +1120,53 @@ async def test_workflow_awaits_async_rag_node():
     assert result["data"]["messages"][-1].content == "RAG answer"
 
 
+async def test_workflow_routes_azure_devops_to_agent():
+    plan = {
+        "tasks": [
+            {
+                "id": "ado-task",
+                "intent": "azure_devops",
+                "prompt": "List open work items",
+            }
+        ]
+    }
+    request = {
+        "user_input": "List open work items",
+        "uploaded_file": None,
+        "chat_history": [],
+        "thread_id": "test-thread-ado",
+    }
+    ado_result = {
+        "agent_result": ["Found 2 open work items."],
+        "completed_steps": ["azure_devops"],
+        "task_results": {
+            "ado-task": {
+                "intent": "azure_devops",
+                "result": "Found 2 open work items.",
+            }
+        },
+    }
+
+    with (
+        patch.object(
+            supervisor_graph,
+            "create_plan",
+            new=AsyncMock(return_value=plan),
+        ),
+        patch.object(
+            supervisor_graph.azure_devops_agent,
+            "azure_devops_agent",
+            new=AsyncMock(return_value=ado_result),
+        ) as mock_ado_agent,
+    ):
+        service = supervisor_graph.WorkflowService(request)
+        result = await service.invoke(request)
+
+    mock_ado_agent.assert_awaited_once()
+    assert result["workflow_status"] == "COMPLETED"
+    assert result["data"]["messages"][-1].content == "Found 2 open work items."
+
+
 def fake_chat_agent(state):
     interrupt("Continue?")
     result = "async graph node ok"
@@ -982,6 +1204,8 @@ def write_plan(thread_id: str):
 async def main():
     await test_planner_async()
     await test_planner_prompt_prioritizes_current_goal_over_attachment()
+    await test_azure_devops_agent_uses_readonly_mcp_tools()
+    await test_azure_devops_client_uses_local_server_and_azure_cli()
     await test_chat_agent_async()
     await test_rag_agent_async()
     await test_rag_uses_async_retrieval_and_model()
@@ -1009,6 +1233,7 @@ async def main():
     supervisor_graph.chat_agent.chat_agent = fake_chat_agent
     await test_workflow_awaits_planner()
     await test_workflow_awaits_async_rag_node()
+    await test_workflow_routes_azure_devops_to_agent()
     thread_id = "test-thread-1"
     write_plan(thread_id)
 
@@ -1023,6 +1248,7 @@ async def main():
     interrupted = await svc.invoke(request)
     assert interrupted["workflow_status"] == "INTERRUPTED"
 
+    (ROOT / "data" / "plan" / f"{thread_id}.json").unlink()
     resume_service = supervisor_graph.WorkflowService(request)
     result = await resume_service.resume("continue", thread_id)
     assert result["workflow_status"] == "COMPLETED"

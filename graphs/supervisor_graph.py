@@ -6,8 +6,8 @@ from typing import Annotated
 from agent_state.agent_state import AgentState
 from langgraph.types import interrupt, Command
 from langgraph.graph import StateGraph, START, END
-from agents import chat_agent, hybrid_rag_agent, rag_agent, sql_agent, ocr_agent, meeting_agent, image_agent, excel_agent, summary_agent, ppt_agent
-from nodes.planner import create_plan, get_execution_plan, delete_execution_plan
+from agents import chat_agent, hybrid_rag_agent, rag_agent, sql_agent, ocr_agent, meeting_agent, image_agent, excel_agent, summary_agent, ppt_agent, azure_devops_agent
+from nodes.planner import create_plan, get_execution_plan, delete_execution_plan, normalize_execution_plan
 from langchain_core.utils.uuid import uuid7
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -51,10 +51,24 @@ class WorkflowService:
                 self.execution_plan = await asyncio.to_thread(
                     get_execution_plan, self.thread_id
                 )
+                if self.execution_plan is None:
+                    checkpoint = self.checkpointer.get_tuple(
+                        {"configurable": {"thread_id": self.thread_id}}
+                    )
+                    if checkpoint is not None:
+                        self.execution_plan = checkpoint.checkpoint.get(
+                            "channel_values", {}
+                        ).get("execution_plan")
+                if self.execution_plan is None:
+                    raise ValueError(
+                        f"Cannot resume workflow {self.thread_id!r}: no execution "
+                        "plan was found in the saved plan file or checkpoint."
+                    )
             else:
                 self.execution_plan = await create_plan(
                     self.thread_id, prompt, uploaded_file
                 )
+            self.execution_plan = normalize_execution_plan(self.execution_plan)
             try:
                 task_count = len(self.execution_plan.get("tasks", []))
             except Exception:
@@ -76,7 +90,8 @@ class WorkflowService:
             "image_to_text": ocr_agent.ocr_agent,
             "meeting_assistant": meeting_agent.meeting_agent,
             "excel_analysis": excel_agent.excel_agent,
-            "ppt_creation": ppt_agent.ppt_agent
+            "ppt_creation": ppt_agent.ppt_agent,
+            "azure_devops": azure_devops_agent.azure_devops_agent,
         }
     
         # Add independent nodes to graph 
