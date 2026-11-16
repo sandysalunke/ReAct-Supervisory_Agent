@@ -89,6 +89,125 @@ async def test_planner_async():
     assert result == normalized_plan
 
 
+def test_execution_plan_validation_and_limits():
+    plan = {
+        "tasks": [
+            {
+                "id": "source-task",
+                "intent": "chat",
+                "prompt": "Answer the question",
+                "dependencies": None,
+            },
+            {
+                "id": "follow-up",
+                "intent": "ppt_creation",
+                "prompt": "Create a presentation from the answer",
+                "dependencies": ["source-task"],
+            },
+        ]
+    }
+    assert planner.normalize_execution_plan(plan) == {
+        "tasks": [
+            {
+                "id": "source-task",
+                "intent": "chat",
+                "prompt": "Answer the question",
+                "dependencies": [],
+            },
+            {
+                "id": "follow-up",
+                "intent": "ppt_creation",
+                "prompt": "Create a presentation from the answer",
+                "dependencies": ["source-task"],
+            },
+        ]
+    }
+
+    max_size_plan = {
+        "tasks": [
+            {
+                "id": f"task-{index}",
+                "intent": "chat",
+                "prompt": "Task prompt",
+                "dependencies": [],
+            }
+            for index in range(planner.MAX_PLAN_TASKS)
+        ]
+    }
+    assert len(planner.normalize_execution_plan(max_size_plan)["tasks"]) == (
+        planner.MAX_PLAN_TASKS
+    )
+    max_prompt_plan = {
+        "tasks": [
+            {
+                "id": "long-prompt",
+                "intent": "chat",
+                "prompt": "x" * planner.MAX_TASK_PROMPT_LENGTH,
+            }
+        ]
+    }
+    assert planner.normalize_execution_plan(max_prompt_plan)["tasks"][0]["prompt"] == (
+        "x" * planner.MAX_TASK_PROMPT_LENGTH
+    )
+
+    invalid_plans = [
+        {"tasks": []},
+        {"tasks": max_size_plan["tasks"] + [max_size_plan["tasks"][0]]},
+        {
+            "tasks": [
+                {"id": "task", "intent": "unsupported", "prompt": "Do work"}
+            ]
+        },
+        {
+            "tasks": [
+                {"id": "duplicate", "intent": "chat", "prompt": "First"},
+                {"id": "duplicate", "intent": "chat", "prompt": "Second"},
+            ]
+        },
+        {
+            "tasks": [
+                {
+                    "id": "task",
+                    "intent": "chat",
+                    "prompt": "Do work",
+                    "dependencies": ["missing"],
+                }
+            ]
+        },
+        {
+            "tasks": [
+                {
+                    "id": "first",
+                    "intent": "chat",
+                    "prompt": "First",
+                    "dependencies": ["second"],
+                },
+                {
+                    "id": "second",
+                    "intent": "chat",
+                    "prompt": "Second",
+                    "dependencies": ["first"],
+                },
+            ]
+        },
+        {
+            "tasks": [
+                {
+                    "id": "too-long",
+                    "intent": "chat",
+                    "prompt": "x" * (planner.MAX_TASK_PROMPT_LENGTH + 1),
+                }
+            ]
+        },
+    ]
+    for invalid_plan in invalid_plans:
+        try:
+            planner.normalize_execution_plan(invalid_plan)
+        except ValueError:
+            continue
+        raise AssertionError(f"Expected plan to be rejected: {invalid_plan!r}")
+
+
 async def test_planner_prompt_prioritizes_current_goal_over_attachment():
     plan = {
         "tasks": [
@@ -1123,6 +1242,37 @@ async def test_workflow_awaits_planner():
     assert result["workflow_status"] == "INTERRUPTED"
 
 
+async def test_workflow_rejects_invalid_plan_before_graph_creation():
+    invalid_plan = {
+        "tasks": [
+            {"id": "unknown-agent", "intent": "not_registered", "prompt": "Run"}
+        ]
+    }
+    request = {
+        "user_input": "Run",
+        "uploaded_file": None,
+        "chat_history": [],
+        "thread_id": "invalid-plan-thread",
+    }
+    with (
+        patch.object(
+            planner,
+            "create_plan",
+            new=AsyncMock(return_value=invalid_plan),
+        ),
+        patch.object(supervisor_graph, "StateGraph") as graph_constructor,
+    ):
+        service = supervisor_graph.WorkflowService(request)
+        try:
+            await service.build_graph()
+        except ValueError as error:
+            assert "unsupported intent" in str(error)
+        else:
+            raise AssertionError("Expected invalid planner output to be rejected")
+
+    graph_constructor.assert_not_called()
+
+
 async def test_workflow_awaits_async_rag_node():
     plan = {
         "tasks": [
@@ -1253,6 +1403,7 @@ def write_plan(thread_id: str):
 
 
 async def main():
+    test_execution_plan_validation_and_limits()
     await test_planner_async()
     await test_planner_prompt_prioritizes_current_goal_over_attachment()
     await test_azure_devops_agent_uses_readonly_mcp_tools()
@@ -1285,6 +1436,7 @@ async def main():
     await test_classifier_uses_async_model()
     chat_agent.chat_agent = fake_chat_agent
     await test_workflow_awaits_planner()
+    await test_workflow_rejects_invalid_plan_before_graph_creation()
     await test_workflow_awaits_async_rag_node()
     await test_workflow_routes_azure_devops_to_agent()
     thread_id = "test-thread-1"

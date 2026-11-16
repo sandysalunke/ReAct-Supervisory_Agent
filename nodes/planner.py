@@ -1,24 +1,171 @@
 import asyncio
-from config.azure_config import llm
 import json
 import os
+import re
+import uuid
+from collections import deque
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
-import uuid
-from datetime import datetime, UTC
+
+from config.azure_config import llm
 from helpers.cosmos_db_client import async_container
 from utils.tracing import tracer
 from opentelemetry import trace
 
 
-def normalize_execution_plan(execution_plan: Optional[dict]) -> dict:
+SUPPORTED_INTENTS = frozenset(
+    {
+        "chat",
+        "image_generation",
+        "file_reasoning",
+        "knowledge_search",
+        "database_search",
+        "image_to_text",
+        "meeting_assistant",
+        "excel_analysis",
+        "ppt_creation",
+        "azure_devops",
+    }
+)
+MAX_PLAN_TASKS = 8
+MAX_TASK_PROMPT_LENGTH = 4000
+MAX_TASK_ID_LENGTH = 64
+TASK_ID_PATTERN = re.compile(
+    rf"[A-Za-z0-9][A-Za-z0-9_-]{{0,{MAX_TASK_ID_LENGTH - 1}}}\Z"
+)
+RESERVED_TASK_IDS = frozenset({"summarize_result"})
+
+
+def normalize_execution_plan(
+    execution_plan: Optional[dict],
+    allowed_intents: Optional[set[str]] = None,
+) -> dict:
     if not isinstance(execution_plan, dict):
         raise ValueError("Execution plan must be a dictionary.")
 
-    for task in execution_plan.get("tasks", []):
-        if task.get("dependencies") is None:
-            task["dependencies"] = []
-    return execution_plan
+    if set(execution_plan) != {"tasks"}:
+        raise ValueError("Execution plan must contain only a 'tasks' field.")
+
+    tasks = execution_plan["tasks"]
+    if not isinstance(tasks, list) or not tasks:
+        raise ValueError("Execution plan 'tasks' must be a non-empty list.")
+    if len(tasks) > MAX_PLAN_TASKS:
+        raise ValueError(
+            f"Execution plan may contain at most {MAX_PLAN_TASKS} tasks."
+        )
+
+    intents = SUPPORTED_INTENTS if allowed_intents is None else allowed_intents
+    required_fields = {"id", "intent", "prompt"}
+    allowed_fields = required_fields | {"dependencies"}
+    normalized_tasks = []
+    task_ids = set()
+
+    for index, task in enumerate(tasks):
+        if not isinstance(task, dict):
+            raise ValueError(f"Execution plan task {index} must be an object.")
+        if not required_fields.issubset(task):
+            raise ValueError(
+                f"Execution plan task {index} must include 'id', 'intent', and 'prompt'."
+            )
+        if not set(task).issubset(allowed_fields):
+            raise ValueError(
+                f"Execution plan task {index} contains unsupported fields."
+            )
+
+        task_id = task["id"]
+        if (
+            not isinstance(task_id, str)
+            or len(task_id) > MAX_TASK_ID_LENGTH
+            or not TASK_ID_PATTERN.fullmatch(task_id)
+        ):
+            raise ValueError(
+                f"Execution plan task {index} has an invalid id; use 1-{MAX_TASK_ID_LENGTH} "
+                "letters, digits, hyphens, or underscores, starting with a letter or digit."
+            )
+        if task_id in RESERVED_TASK_IDS:
+            raise ValueError(
+                f"Execution plan task id {task_id!r} is reserved by the workflow."
+            )
+        if task_id in task_ids:
+            raise ValueError(f"Execution plan contains duplicate task id {task_id!r}.")
+        task_ids.add(task_id)
+
+        intent = task["intent"]
+        if not isinstance(intent, str) or intent not in intents:
+            raise ValueError(
+                f"Execution plan task {task_id!r} has unsupported intent {intent!r}."
+            )
+
+        task_prompt = task["prompt"]
+        if (
+            not isinstance(task_prompt, str)
+            or not task_prompt.strip()
+            or len(task_prompt) > MAX_TASK_PROMPT_LENGTH
+        ):
+            raise ValueError(
+                f"Execution plan task {task_id!r} prompt must contain 1-"
+                f"{MAX_TASK_PROMPT_LENGTH} characters."
+            )
+
+        dependencies = task.get("dependencies", [])
+        if dependencies is None:
+            dependencies = []
+        if not isinstance(dependencies, list) or any(
+            not isinstance(dependency, str) for dependency in dependencies
+        ):
+            raise ValueError(
+                f"Execution plan task {task_id!r} dependencies must be a list of task ids."
+            )
+        if len(set(dependencies)) != len(dependencies):
+            raise ValueError(
+                f"Execution plan task {task_id!r} contains duplicate dependencies."
+            )
+        if task_id in dependencies:
+            raise ValueError(
+                f"Execution plan task {task_id!r} cannot depend on itself."
+            )
+
+        normalized_tasks.append(
+            {
+                "id": task_id,
+                "intent": intent,
+                "prompt": task_prompt,
+                "dependencies": dependencies,
+            }
+        )
+
+    for task in normalized_tasks:
+        for dependency in task["dependencies"]:
+            if dependency not in task_ids:
+                raise ValueError(
+                    f"Execution plan task {task['id']!r} references unknown dependency "
+                    f"{dependency!r}."
+                )
+
+    dependents = {task_id: [] for task_id in task_ids}
+    in_degrees = {}
+    for task in normalized_tasks:
+        in_degrees[task["id"]] = len(task["dependencies"])
+        for dependency in task["dependencies"]:
+            dependents[dependency].append(task["id"])
+
+    ready = deque(
+        task_id for task_id, in_degree in in_degrees.items() if in_degree == 0
+    )
+    visited = 0
+    while ready:
+        task_id = ready.popleft()
+        visited += 1
+        for dependent in dependents[task_id]:
+            in_degrees[dependent] -= 1
+            if in_degrees[dependent] == 0:
+                ready.append(dependent)
+
+    if visited != len(normalized_tasks):
+        raise ValueError("Execution plan dependencies must form an acyclic graph.")
+
+    return {"tasks": normalized_tasks}
 
 
 async def create_plan(
@@ -73,6 +220,10 @@ async def create_plan(
 
         Rules:
             - Determine the tasks required to achieve user goal.
+            - Return no more than {MAX_PLAN_TASKS} tasks.
+            - Each task must have an id, intent, prompt, and optional dependencies field; do not add other fields.
+            - Task ids must be unique, at most {MAX_TASK_ID_LENGTH} characters, and start with a letter or digit.
+            - Each task prompt must be non-empty and no longer than {MAX_TASK_PROMPT_LENGTH} characters.
             - Route explicit Azure DevOps or ADO data requests to azure_devops, not chat,
               database_search, or knowledge_search.
             - Route from the current USER GOAL first. The uploaded file path only indicates that a file is available; it does not mean the user is asking about that file.

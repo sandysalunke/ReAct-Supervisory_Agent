@@ -43,6 +43,19 @@ class WorkflowService:
     async def build_graph(self) -> AgentState:
         from nodes import planner
 
+        agent_modules = {
+            "chat": ("agents.chat_agent", "chat_agent"),
+            "image_generation": ("agents.image_agent", "image_agent"),
+            "file_reasoning": ("agents.rag_agent", "rag_agent"),
+            "knowledge_search": ("agents.hybrid_rag_agent", "hybrid_rag_agent"),
+            "database_search": ("agents.sql_agent", "sql_agent"),
+            "image_to_text": ("agents.ocr_agent", "ocr_agent"),
+            "meeting_assistant": ("agents.meeting_agent", "meeting_agent"),
+            "excel_analysis": ("agents.excel_agent", "excel_agent"),
+            "ppt_creation": ("agents.ppt_agent", "ppt_agent"),
+            "azure_devops": ("agents.azure_devops_agent", "azure_devops_agent"),
+        }
+
         prompt = self.request["user_input"]
         uploaded_file = self.request["uploaded_file"]
     
@@ -70,31 +83,15 @@ class WorkflowService:
                     self.thread_id, prompt, uploaded_file
                 )
             self.execution_plan = planner.normalize_execution_plan(
-                self.execution_plan
+                self.execution_plan, allowed_intents=set(agent_modules)
             )
-            try:
-                task_count = len(self.execution_plan.get("tasks", []))
-            except Exception:
-                task_count = 0
+            task_count = len(self.execution_plan["tasks"])
             trace.get_current_span().set_attribute("workflow.tasks.count", task_count)
             trace.get_current_span().set_attribute("workflow.execution_plan", json.dumps(self.execution_plan))
             print("EXECUTION PLAN: ", json.dumps(self.execution_plan, indent=2))
         
         # Initiate a graph
         graph = StateGraph(AgentState)
-    
-        agent_modules = {
-            "chat": ("agents.chat_agent", "chat_agent"),
-            "image_generation": ("agents.image_agent", "image_agent"),
-            "file_reasoning": ("agents.rag_agent", "rag_agent"),
-            "knowledge_search": ("agents.hybrid_rag_agent", "hybrid_rag_agent"),
-            "database_search": ("agents.sql_agent", "sql_agent"),
-            "image_to_text": ("agents.ocr_agent", "ocr_agent"),
-            "meeting_assistant": ("agents.meeting_agent", "meeting_agent"),
-            "excel_analysis": ("agents.excel_agent", "excel_agent"),
-            "ppt_creation": ("agents.ppt_agent", "ppt_agent"),
-            "azure_devops": ("agents.azure_devops_agent", "azure_devops_agent"),
-        }
         agent_functions = {}
     
         # Add independent nodes to graph 

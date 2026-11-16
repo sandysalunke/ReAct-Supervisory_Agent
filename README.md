@@ -34,6 +34,11 @@
 - Blocking document/image/audio I/O, vector-store and SQLite setup, local cache access, PowerPoint rendering, and dataframe/code execution run in worker threads; large audio chunking uses an async FFmpeg subprocess.
 - The sync-only UI submits workflow coroutines to the shared background event loop and waits for their results.
 - Summary/state assembly remains synchronous because it does no network or blocking file work.
+
+### Planner execution-plan limits
+- Planner output is validated before it is saved or used to build a workflow graph.
+- Plans must contain 1-8 tasks, use supported intents and unique task IDs, and form an acyclic dependency graph with valid references.
+- Each task prompt is limited to 4,000 characters; invalid plans fail explicitly instead of being truncated or partially executed.
       
 ### Architecture:
 ```python
