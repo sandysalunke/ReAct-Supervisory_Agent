@@ -5,6 +5,7 @@ from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import create_sql_agent
 from config.azure_config import llm
 from helpers.dependency_manager import get_dependency_results
+from helpers.chat_history import recent_chat_history
 
 # Function to run the user prompt through LLM
 # Uses SQL agent from langchanin agent_toolkits
@@ -71,7 +72,7 @@ async def sql_agent(state: AgentState) -> AgentState:
     task_prompt = state.get("task_prompt", user_input)
     current_task = state.get("current_task", {})
     task_results = state.get("task_results",{})
-    chat_history = state.get("chat_history",[])
+    chat_history = recent_chat_history(state.get("chat_history", []))
 
     dependency_results = get_dependency_results(current_task, task_results)
 

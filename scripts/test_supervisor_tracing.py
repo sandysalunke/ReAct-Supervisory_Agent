@@ -4,9 +4,11 @@ import json
 import sys
 from pathlib import Path
 import uuid
+import httpx
+from openai import BadRequestError
 from langgraph.types import interrupt
 from unittest.mock import AsyncMock, Mock, patch
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -26,6 +28,7 @@ from agents import meeting_agent, image_agent, ppt_agent
 from agents import azure_devops_agent
 from nodes import classifier
 from helpers import ppt_helper
+from helpers.chat_history import recent_chat_history
 from utils.async_runner import AsyncLoopRunner
 from helpers import embeddings, hybrid_rag_helper
 from helpers import cosmos_db_client
@@ -334,6 +337,23 @@ async def test_chat_agent_async():
     mock_create_item.assert_awaited_once()
     assert result["agent_result"] == ["chat response"]
     assert result["task_results"]["chat-task"]["result"] == "chat response"
+
+
+def test_chat_agent_limits_history_to_recent_turns():
+    history = []
+    for turn in range(12):
+        history.extend(
+            [
+                HumanMessage(content=f"question {turn}"),
+                AIMessage(content=f"answer {turn}"),
+            ]
+        )
+
+    recent_history = recent_chat_history(history)
+
+    assert len(recent_history) == 20
+    assert recent_history[0].content == "question 2"
+    assert recent_history[-1].content == "answer 11"
 
 
 async def test_rag_agent_async():
@@ -933,6 +953,37 @@ async def test_image_generation_is_async():
     assert image_path.endswith(".png")
 
 
+async def test_image_generation_handles_moderation_block():
+    response = httpx.Response(
+        400,
+        request=httpx.Request("POST", "https://example.test"),
+    )
+    moderation_error = BadRequestError(
+        "Image generation request was rejected",
+        response=response,
+        body={
+            "error": {
+                "message": "Request rejected by safety system",
+                "code": "moderation_blocked",
+                "type": "image_generation_user_error",
+                "moderation_details": {
+                    "moderation_stage": "output",
+                    "categories": ["other"],
+                },
+            }
+        },
+    )
+
+    with patch.object(image_agent, "async_client") as mock_async_client:
+        mock_async_client.images.generate = AsyncMock(side_effect=moderation_error)
+        result = await image_agent.generate_image(
+            "image-thread", "refined image prompt"
+        )
+
+    assert "blocked by the image safety system" in result
+    assert "revise the prompt and try again" in result
+
+
 async def test_image_agent_async():
     state = {
         "user_input": "Create a graphic",
@@ -1207,6 +1258,7 @@ async def main():
     await test_azure_devops_agent_uses_readonly_mcp_tools()
     await test_azure_devops_client_uses_local_server_and_azure_cli()
     await test_chat_agent_async()
+    test_chat_agent_limits_history_to_recent_turns()
     await test_rag_agent_async()
     await test_rag_uses_async_retrieval_and_model()
     await test_async_vector_retrieval()
@@ -1225,6 +1277,7 @@ async def main():
     await test_meeting_transcription_and_summary_async()
     await test_meeting_agent_async()
     await test_image_generation_is_async()
+    await test_image_generation_handles_moderation_block()
     await test_image_agent_async()
     await test_ppt_agent_and_helper_async_boundary()
     test_presentation_paths_are_unique_per_call()

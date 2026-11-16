@@ -5,9 +5,11 @@ from opentelemetry import trace
 from agent_state.agent_state import AgentState
 from langgraph.types import interrupt
 from helpers.dependency_manager import get_dependency_results
+from helpers.chat_history import recent_chat_history
 import uuid
 from datetime import datetime, UTC
 from helpers.cosmos_db_client import async_container
+
 
 # chat_agent - Added as node in supervisor agent graph
 async def chat_agent(state: AgentState):
@@ -18,7 +20,7 @@ async def chat_agent(state: AgentState):
     task_prompt = state.get("task_prompt", user_input)
     current_task = state.get("current_task", {})
     task_results = state.get("task_results",{})
-    chat_history = state.get("chat_history",[])
+    chat_history = recent_chat_history(state.get("chat_history", []))
 
     dependency_results = get_dependency_results(current_task, task_results)
 

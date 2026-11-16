@@ -3,6 +3,7 @@ from config.azure_config import llm
 from agent_state.agent_state import AgentState
 from helpers.ppt_helper import create_presentation
 from helpers.dependency_manager import get_dependency_results
+from helpers.chat_history import recent_chat_history
 import json
 
 # Sample ppt content
@@ -33,7 +34,7 @@ async def ppt_agent(state: AgentState):
     task_prompt = state.get("task_prompt", user_input)
     current_task = state.get("current_task", {})
     task_results = state.get("task_results",{})
-    chat_history = state.get("chat_history",[])
+    chat_history = recent_chat_history(state.get("chat_history", []))
 
     dependency_results = get_dependency_results(current_task, task_results)
 

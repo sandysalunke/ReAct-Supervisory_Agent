@@ -7,10 +7,12 @@ from opentelemetry import trace
 import base64
 from datetime import datetime
 from helpers.dependency_manager import get_dependency_results
+from helpers.chat_history import recent_chat_history
 import uuid
 from datetime import datetime, UTC
 from helpers.cosmos_db_client import async_container
 from pathlib import Path
+from openai import BadRequestError
 
 # Generate the prompt that considers dependency_results and chat_history
 async def generate_prompt(thread_id, task_prompt, dependency_results, chat_history):
@@ -79,11 +81,23 @@ async def generate_image(thread_id, task_prompt):
         "prompt_length": len(task_prompt)
         }):
         
-        result = await async_client.images.generate(
-            model=IMAGE_MODEL,
-            prompt=task_prompt,
-            size="1024x1024"
-        )
+        try:
+            result = await async_client.images.generate(
+                model=IMAGE_MODEL,
+                prompt=task_prompt,
+                size="1024x1024"
+            )
+        except BadRequestError as exc:
+            error = exc.body.get("error") if isinstance(exc.body, dict) else None
+            if not isinstance(error, dict) or error.get("code") != "moderation_blocked":
+                raise
+
+            trace.get_current_span().set_attribute("image.generated", False)
+            trace.get_current_span().set_attribute("image.error_code", "moderation_blocked")
+            return (
+                "The image could not be generated because it was blocked by the "
+                "image safety system. Please revise the prompt and try again."
+            )
 
         # Add traces in Cosmos DB for cost observability and monitoring
         usage = result.usage
@@ -135,7 +149,7 @@ async def image_agent(state: AgentState) -> AgentState:
     task_prompt = state.get("task_prompt", user_input)
     current_task = state.get("current_task", {})
     task_results = state.get("task_results",{})
-    chat_history = state.get("chat_history",[])
+    chat_history = recent_chat_history(state.get("chat_history", []))
     thread_id = state.get("thread_id")
 
     with tracer.start_as_current_span("agent.image", attributes={
