@@ -184,7 +184,7 @@ async def _record_model_usage(response: Any, thread_id: str | None) -> None:
         "llm.completion_tokens", usage["completion_tokens"]
     )
     trace.get_current_span().set_attribute("llm.total_tokens", usage["total_tokens"])
-    await async_container.create_item(
+    await async_container.upsert_item(
         {
             "id": str(uuid.uuid4()),
             "timestamp": datetime.now(UTC).isoformat(),

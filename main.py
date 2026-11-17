@@ -1,8 +1,8 @@
 import asyncio
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 import streamlit as st
-from pathlib import Path
 from utils.async_runner import get_async_runner
+from utils.image_display import split_local_image_paths
 
 is_streamlit_app = True
 # is_streamlit_app = False
@@ -13,23 +13,18 @@ if is_streamlit_app:
 
     # Display chat
     def display_chat():
-        image_extensions = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
-
         for msg in st.session_state.chat_history:
             
             if isinstance(msg, HumanMessage):
                 st.chat_message("user").write(msg.content)
 
             elif isinstance(msg, AIMessage):
-                message = msg.content
-                if (
-                    Path(message).exists()
-                    and Path(message).suffix.lower() in image_extensions
-                ):
-                    st.write("Here is your generated image:")
-                    st.image(message, width=400)
-                else:
-                    st.chat_message("assistant").write(message)
+                with st.chat_message("assistant"):
+                    for text, image_path in split_local_image_paths(msg.content):
+                        if image_path is not None:
+                            st.image(str(image_path), width=400)
+                        elif text:
+                            st.markdown(text)
 
             elif isinstance(msg, ToolMessage):
                 st.chat_message("Tool").write(msg.content)
@@ -82,6 +77,7 @@ if is_streamlit_app:
                         request = {
                             "thread_id": thread_id,
                             "workflow_status": "INTERRUPTED",
+                            "interrupt_ids": st.session_state.chat_history[-1].additional_kwargs.get("interrupt_ids", []),
                             "user_input": prompt,
                             "uploaded_file": st.session_state.uploaded_file_path,
                             "chat_history": st.session_state.chat_history

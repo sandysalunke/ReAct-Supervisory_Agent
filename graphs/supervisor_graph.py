@@ -93,6 +93,16 @@ class WorkflowService:
         # Initiate a graph
         graph = StateGraph(AgentState)
         agent_functions = {}
+        intent_counts = {}
+        task_node_names = {}
+
+        for task in self.execution_plan["tasks"]:
+            intent = task["intent"]
+            intent_counts[intent] = intent_counts.get(intent, 0) + 1
+            occurrence = intent_counts[intent]
+            task_node_names[task["id"]] = (
+                intent if occurrence == 1 else f"{intent}_{occurrence}"
+            )
     
         # Add independent nodes to graph 
         for task in self.execution_plan["tasks"]:
@@ -103,7 +113,7 @@ class WorkflowService:
                     importlib.import_module(module_name), function_name
                 )
             graph.add_node(
-                task["id"],
+                task_node_names[task["id"]],
                 self.create_task_node(
                     agent_functions[intent],
                     task
@@ -117,11 +127,12 @@ class WorkflowService:
     
         # Add edges to the graph
         for task in self.execution_plan["tasks"]:
+            task_node_name = task_node_names[task["id"]]
             if not task["dependencies"]:
-                graph.add_edge(START, task["id"])   # adds edges next to start (this could add parellel nodes)
+                graph.add_edge(START, task_node_name)   # adds edges next to start (this could add parellel nodes)
     
             for dep in task["dependencies"]:
-                graph.add_edge(dep, task["id"])     # adds edges to link dependent nodes
+                graph.add_edge(task_node_names[dep], task_node_name)     # adds edges to link dependent nodes
     
         # Add edges from NON Dependent nodes to summary_agent
         all_task_ids = {t["id"] for t in self.execution_plan["tasks"]}
@@ -135,7 +146,7 @@ class WorkflowService:
         leaf_nodes = all_task_ids - dependency_ids
     
         for leaf in leaf_nodes:
-            graph.add_edge(leaf, "summarize_result")    # All leaf nodes are linked to summary_agent
+            graph.add_edge(task_node_names[leaf], "summarize_result")    # All leaf nodes are linked to summary_agent
     
         # Add edge from summary_agent to END
         graph.add_edge("summarize_result", END)
@@ -185,6 +196,7 @@ class WorkflowService:
                     }
                 }
             )
+        await self._delete_execution_plan_if_complete(self.thread_id, result)
         return self._build_response(self.thread_id, result)
 
     ##############################################
@@ -192,20 +204,44 @@ class WorkflowService:
     async def resume(self, user_response, thread_id):
         if self.graph is None:
             await self.initialize()
+        interrupt_ids = self.request.get("interrupt_ids") or []
+        if not interrupt_ids:
+            interrupt_ids = await self._get_pending_interrupt_ids(thread_id)
+        resume_value = (
+            {interrupt_id: user_response for interrupt_id in interrupt_ids}
+            if len(interrupt_ids) > 1
+            else user_response
+        )
         print("----Graph Resumed----")
         with tracer.start_as_current_span("graph.resume", attributes={"thread_id": thread_id}):
             result = await self.graph.ainvoke(
-                Command(resume=user_response),
+                Command(resume=resume_value),
                 config={
                     "configurable": {
                         "thread_id": thread_id
                     }
                 }
             )
-            from nodes.planner import delete_execution_plan
-
-            await asyncio.to_thread(delete_execution_plan, thread_id)
+        await self._delete_execution_plan_if_complete(thread_id, result)
         return self._build_response(thread_id, result)
+
+    async def _get_pending_interrupt_ids(self, thread_id):
+        snapshot = await self.graph.aget_state(
+            {"configurable": {"thread_id": thread_id}}
+        )
+        return [
+            pending_interrupt.id
+            for task in snapshot.tasks
+            for pending_interrupt in task.interrupts
+        ]
+
+    async def _delete_execution_plan_if_complete(self, thread_id, result):
+        if "__interrupt__" in result:
+            return
+
+        from nodes.planner import delete_execution_plan
+
+        await asyncio.to_thread(delete_execution_plan, thread_id)
 
     ##############################################
     # function to build the response based on the result of the graph execution
@@ -214,6 +250,11 @@ class WorkflowService:
             if "__interrupt__" in result:
                 trace.get_current_span().set_attribute("workflow.status", "INTERRUPTED")
                 print("===========Inturrupt==========")
+                interrupt_ids = [
+                    pending_interrupt_id
+                    for pending_interrupt in result["__interrupt__"]
+                    if (pending_interrupt_id := getattr(pending_interrupt, "id", None))
+                ]
                 return {
                     "thread_id": thread_id,
                     "workflow_status": "INTERRUPTED",
@@ -225,7 +266,8 @@ class WorkflowService:
                                 content=result["__interrupt__"][0].value,
                                 additional_kwargs={
                                     "thread_id": thread_id,
-                                    "workflow_status": "INTERRUPTED"
+                                    "workflow_status": "INTERRUPTED",
+                                    "interrupt_ids": interrupt_ids,
                                 }
                             )
                         ]

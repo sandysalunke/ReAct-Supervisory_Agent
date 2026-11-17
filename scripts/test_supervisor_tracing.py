@@ -33,6 +33,7 @@ from utils.async_runner import AsyncLoopRunner
 from helpers import embeddings, hybrid_rag_helper
 from helpers import cosmos_db_client
 from tools import excel_tools
+from utils.image_display import split_local_image_paths
 
 
 async def test_planner_async():
@@ -72,16 +73,16 @@ async def test_planner_async():
         patch.object(planner, "llm") as mock_llm,
         patch.object(
             planner.async_container,
-            "create_item",
+            "upsert_item",
             new=AsyncMock(),
-        ) as mock_create_item,
+        ) as mock_upsert_item,
         patch.object(planner, "save_execution_plan") as mock_save_plan,
     ):
         mock_llm.ainvoke = AsyncMock(return_value=response)
         result = await planner.create_plan("test-thread", "Say hello", None)
 
     mock_llm.ainvoke.assert_awaited_once()
-    mock_create_item.assert_awaited_once()
+    mock_upsert_item.assert_awaited_once()
     mock_save_plan.assert_called_once_with("test-thread", normalized_plan)
     assert "Route explicit Azure DevOps or ADO data requests to azure_devops" in (
         mock_llm.ainvoke.await_args.args[0]
@@ -107,6 +108,22 @@ def test_execution_plan_validation_and_limits():
         ]
     }
     assert planner.normalize_execution_plan(plan) == {
+        "tasks": [
+            {
+                "id": "source-task",
+                "intent": "chat",
+                "prompt": "Answer the question",
+                "dependencies": [],
+            },
+            {
+                "id": "follow-up",
+                "intent": "ppt_creation",
+                "prompt": "Create a presentation from the answer",
+                "dependencies": ["source-task"],
+            },
+        ]
+    }
+    assert planner.normalize_execution_plan(plan["tasks"]) == {
         "tasks": [
             {
                 "id": "source-task",
@@ -235,7 +252,7 @@ async def test_planner_prompt_prioritizes_current_goal_over_attachment():
         patch.object(planner, "llm") as mock_llm,
         patch.object(
             planner.async_container,
-            "create_item",
+            "upsert_item",
             new=AsyncMock(),
         ),
         patch.object(planner, "save_execution_plan"),
@@ -445,15 +462,15 @@ async def test_chat_agent_async():
         patch.object(chat_agent, "llm") as mock_llm,
         patch.object(
             chat_agent.async_container,
-            "create_item",
+            "upsert_item",
             new=AsyncMock(),
-        ) as mock_create_item,
+        ) as mock_upsert_item,
     ):
         mock_llm.ainvoke = AsyncMock(return_value=response)
         result = await chat_agent.chat_agent(state)
 
     mock_llm.ainvoke.assert_awaited_once()
-    mock_create_item.assert_awaited_once()
+    mock_upsert_item.assert_awaited_once()
     assert result["agent_result"] == ["chat response"]
     assert result["task_results"]["chat-task"]["result"] == "chat response"
 
@@ -572,15 +589,15 @@ async def test_async_query_embedding():
         patch.object(embeddings.async_client, "embeddings") as mock_embeddings,
         patch.object(
             embeddings.async_container,
-            "create_item",
+            "upsert_item",
             new=AsyncMock(),
-        ) as mock_create_item,
+        ) as mock_upsert_item,
     ):
         mock_embeddings.create = AsyncMock(return_value=response)
         result = await embeddings.AzureEmbeddingWrapper().aembed_query("query")
 
     mock_embeddings.create.assert_awaited_once()
-    mock_create_item.assert_awaited_once()
+    mock_upsert_item.assert_awaited_once()
     assert result == [0.1, 0.2]
 
 
@@ -719,9 +736,9 @@ async def test_hybrid_response_and_rating_are_async():
         patch.object(hybrid_rag_helper, "llm") as mock_llm,
         patch.object(
             hybrid_rag_helper.async_container,
-            "create_item",
+            "upsert_item",
             new=AsyncMock(),
-        ) as mock_create_item,
+        ) as mock_upsert_item,
     ):
         mock_llm.ainvoke = AsyncMock(side_effect=[answer, rating])
         result = await hybrid_rag_helper.generate_response(
@@ -731,7 +748,7 @@ async def test_hybrid_response_and_rating_are_async():
         )
 
     assert mock_llm.ainvoke.await_count == 2
-    assert mock_create_item.await_count == 2
+    assert mock_upsert_item.await_count == 2
     assert result == "Policy answer [1]"
 
 
@@ -1050,9 +1067,9 @@ async def test_image_generation_is_async():
         patch.object(image_agent, "async_client") as mock_async_client,
         patch.object(
             image_agent.async_container,
-            "create_item",
+            "upsert_item",
             new=AsyncMock(),
-        ) as mock_create_item,
+        ) as mock_upsert_item,
         patch.object(image_agent.asyncio, "to_thread", new=AsyncMock(side_effect=run_in_thread)),
         patch.object(image_agent, "_write_image") as mock_write,
     ):
@@ -1067,7 +1084,7 @@ async def test_image_generation_is_async():
 
     mock_llm.ainvoke.assert_awaited_once()
     mock_async_client.images.generate.assert_awaited_once()
-    assert mock_create_item.await_count == 2
+    assert mock_upsert_item.await_count == 2
     mock_write.assert_called_once()
     assert image_path.endswith(".png")
 
@@ -1166,6 +1183,23 @@ async def test_ppt_agent_and_helper_async_boundary():
     mock_llm.ainvoke.assert_awaited_once()
     mock_create.assert_called_once_with(slides["slides"])
     assert result["agent_result"] == ["Here is your power point presentation: deck.pptx"]
+
+
+def test_assistant_message_splits_image_paths_for_rendering():
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        image_path = Path(temp_dir) / "generated.png"
+        image_path.write_bytes(b"image")
+
+        segments = split_local_image_paths(
+            f"### Generated image\n\n{image_path}\n\nDone."
+        )
+
+    assert segments[0] == ("### Generated image\n\n", None)
+    assert segments[1][0] == ""
+    assert segments[1][1].name == "generated.png"
+    assert segments[2] == ("\n\nDone.", None)
 
 
 def test_presentation_paths_are_unique_per_call():
@@ -1321,6 +1355,122 @@ async def test_workflow_awaits_async_rag_node():
     assert result["data"]["messages"][-1].content == "RAG answer"
 
 
+async def test_workflow_aggregates_all_parallel_task_results():
+    plan = {
+        "tasks": [
+            {
+                "id": "first-task",
+                "intent": "file_reasoning",
+                "prompt": "Analyze the first document",
+                "dependencies": [],
+            },
+            {
+                "id": "second-task",
+                "intent": "file_reasoning",
+                "prompt": "Analyze the second document",
+                "dependencies": [],
+            },
+        ]
+    }
+    request = {
+        "user_input": "Analyze both documents",
+        "uploaded_file": "document.pdf",
+        "chat_history": [],
+        "thread_id": "parallel-task-results",
+    }
+
+    async def fake_rag_agent(state):
+        task = state["current_task"]
+        result = {
+            "first-task": "First document findings.",
+            "second-task": "Second document findings.",
+        }[task["id"]]
+        return {
+            "agent_result": [result],
+            "completed_steps": [task["intent"]],
+            "task_results": {
+                task["id"]: {
+                    "intent": task["intent"],
+                    "result": result,
+                }
+            },
+        }
+
+    with (
+        patch.object(
+            planner,
+            "create_plan",
+            new=AsyncMock(return_value=plan),
+        ),
+        patch.object(
+            rag_agent,
+            "rag_agent",
+            new=AsyncMock(side_effect=fake_rag_agent),
+        ) as mock_rag_agent,
+    ):
+        service = supervisor_graph.WorkflowService(request)
+        result = await service.invoke(request)
+
+    final_answer = result["data"]["messages"][-1].content
+    assert mock_rag_agent.await_count == 2
+    assert "### Document analysis (1)" in final_answer
+    assert "First document findings." in final_answer
+    assert "### Document analysis (2)" in final_answer
+    assert "Second document findings." in final_answer
+    assert "first-task" not in final_answer
+    assert "second-task" not in final_answer
+
+
+async def test_graph_uses_intent_names_for_task_nodes():
+    plan = {
+        "tasks": [
+            {
+                "id": "create-image",
+                "intent": "image_generation",
+                "prompt": "Create an image",
+                "dependencies": [],
+            },
+            {
+                "id": "create-another-image",
+                "intent": "image_generation",
+                "prompt": "Create another image",
+                "dependencies": ["create-image"],
+            },
+            {
+                "id": "respond-to-user",
+                "intent": "chat",
+                "prompt": "Explain the generated images",
+                "dependencies": ["create-another-image"],
+            },
+        ]
+    }
+    request = {
+        "user_input": "Create two images and explain them",
+        "uploaded_file": None,
+        "chat_history": [],
+        "thread_id": "intent-named-graph",
+    }
+
+    with patch.object(
+        planner,
+        "create_plan",
+        new=AsyncMock(return_value=plan),
+    ):
+        service = supervisor_graph.WorkflowService(request)
+        graph = await service.build_graph()
+
+    node_names = set(graph.get_graph().nodes)
+    assert {
+        "image_generation",
+        "image_generation_2",
+        "chat",
+        "summarize_result",
+    }.issubset(node_names)
+    assert not {"create-image", "create-another-image", "respond-to-user"} & (
+        node_names
+    )
+
+
 async def test_workflow_routes_azure_devops_to_agent():
     plan = {
         "tasks": [
@@ -1366,6 +1516,134 @@ async def test_workflow_routes_azure_devops_to_agent():
     mock_ado_agent.assert_awaited_once()
     assert result["workflow_status"] == "COMPLETED"
     assert result["data"]["messages"][-1].content == "Found 2 open work items."
+
+
+async def test_execution_plan_cleanup_only_after_completion():
+    class FakeGraph:
+        def __init__(self, result):
+            self.result = result
+
+        async def ainvoke(self, *_args, **_kwargs):
+            return self.result
+
+        async def aget_state(self, *_args, **_kwargs):
+            return type("Snapshot", (), {"tasks": []})()
+
+    def create_service(thread_id, result):
+        request = {
+            "user_input": "Continue workflow",
+            "uploaded_file": None,
+            "chat_history": [],
+            "thread_id": thread_id,
+        }
+        service = supervisor_graph.WorkflowService(request)
+        service.graph = FakeGraph(result)
+        return service
+
+    interrupted_result = {
+        "__interrupt__": [
+            type("Interrupt", (), {"value": "Please continue"})()
+        ]
+    }
+    completed_result = {"messages": []}
+
+    with patch.object(planner, "delete_execution_plan") as mock_delete:
+        completed_invoke = create_service("completed-invoke", completed_result)
+        await completed_invoke.invoke(completed_invoke.request)
+
+        interrupted_invoke = create_service("interrupted-invoke", interrupted_result)
+        await interrupted_invoke.invoke(interrupted_invoke.request)
+
+        completed_resume = create_service("completed-resume", completed_result)
+        await completed_resume.resume("continue", "completed-resume")
+
+        interrupted_resume = create_service("interrupted-resume", interrupted_result)
+        await interrupted_resume.resume("continue", "interrupted-resume")
+
+    assert [call.args[0] for call in mock_delete.call_args_list] == [
+        "completed-invoke",
+        "completed-resume",
+    ]
+
+
+async def test_resume_answers_multiple_pending_interrupts():
+    plan = {
+        "tasks": [
+            {
+                "id": "first-chat",
+                "intent": "chat",
+                "prompt": "Answer the first question",
+                "dependencies": [],
+            },
+            {
+                "id": "second-chat",
+                "intent": "chat",
+                "prompt": "Answer the second question",
+                "dependencies": [],
+            },
+        ]
+    }
+    request = {
+        "user_input": "Answer both questions",
+        "uploaded_file": None,
+        "chat_history": [],
+        "thread_id": "multiple-interrupt-resume",
+    }
+    response_metadata = {
+        "token_usage": {
+            "prompt_tokens": 2,
+            "completion_tokens": 3,
+            "total_tokens": 5,
+        },
+        "model_name": "test-model",
+        "finish_reason": "stop",
+    }
+
+    async def respond_to_task(prompt):
+        answer = (
+            "First chat answer"
+            if "Answer the first question" in prompt
+            else "Second chat answer"
+        )
+        return AIMessage(content=answer, response_metadata=response_metadata)
+
+    with (
+        patch.object(
+            planner,
+            "create_plan",
+            new=AsyncMock(return_value=plan),
+        ),
+        patch.object(chat_agent, "llm") as mock_llm,
+        patch.object(
+            chat_agent.async_container,
+            "upsert_item",
+            new=AsyncMock(),
+        ),
+    ):
+        mock_llm.ainvoke = AsyncMock(side_effect=respond_to_task)
+        service = supervisor_graph.WorkflowService(request)
+        interrupted = await service.invoke(request)
+
+        assert interrupted["workflow_status"] == "INTERRUPTED"
+        interrupt_ids = interrupted["data"]["messages"][-1].additional_kwargs[
+            "interrupt_ids"
+        ]
+        assert len(interrupt_ids) == 2
+
+        resume_request = {
+            **request,
+            "workflow_status": "INTERRUPTED",
+        }
+        resume_service = supervisor_graph.WorkflowService(resume_request)
+        completed = await resume_service.resume(
+            "continue",
+            request["thread_id"],
+        )
+
+    assert completed["workflow_status"] == "COMPLETED"
+    final_answer = completed["data"]["messages"][-1].content
+    assert "First chat answer" in final_answer
+    assert "Second chat answer" in final_answer
 
 
 def fake_chat_agent(state):
@@ -1431,14 +1709,19 @@ async def main():
     await test_image_generation_handles_moderation_block()
     await test_image_agent_async()
     await test_ppt_agent_and_helper_async_boundary()
+    test_assistant_message_splits_image_paths_for_rendering()
     test_presentation_paths_are_unique_per_call()
     test_async_loop_runner_reuses_loop()
     await test_classifier_uses_async_model()
-    chat_agent.chat_agent = fake_chat_agent
-    await test_workflow_awaits_planner()
+    with patch.object(chat_agent, "chat_agent", fake_chat_agent):
+        await test_workflow_awaits_planner()
     await test_workflow_rejects_invalid_plan_before_graph_creation()
     await test_workflow_awaits_async_rag_node()
+    await test_workflow_aggregates_all_parallel_task_results()
+    await test_graph_uses_intent_names_for_task_nodes()
     await test_workflow_routes_azure_devops_to_agent()
+    await test_execution_plan_cleanup_only_after_completion()
+    await test_resume_answers_multiple_pending_interrupts()
     thread_id = "test-thread-1"
     write_plan(thread_id)
 
@@ -1450,12 +1733,13 @@ async def main():
         "thread_id": thread_id
     }
     svc = supervisor_graph.WorkflowService(request)
-    interrupted = await svc.invoke(request)
-    assert interrupted["workflow_status"] == "INTERRUPTED"
+    with patch.object(chat_agent, "chat_agent", fake_chat_agent):
+        interrupted = await svc.invoke(request)
+        assert interrupted["workflow_status"] == "INTERRUPTED"
 
-    (ROOT / "data" / "plan" / f"{thread_id}.json").unlink()
-    resume_service = supervisor_graph.WorkflowService(request)
-    result = await resume_service.resume("continue", thread_id)
+        (ROOT / "data" / "plan" / f"{thread_id}.json").unlink()
+        resume_service = supervisor_graph.WorkflowService(request)
+        result = await resume_service.resume("continue", thread_id)
     assert result["workflow_status"] == "COMPLETED"
     assert result["data"]["messages"][-1].content == "async graph node ok"
     print("Async initialization, invocation, interrupt, and resume passed.")

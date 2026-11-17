@@ -49,7 +49,7 @@ async def chat_agent(state: AgentState):
         trace.get_current_span().set_attribute("llm.finish_reason", response.response_metadata["finish_reason"])
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        await async_container.create_item(
+        await async_container.upsert_item(
             {
                 "id": str(uuid.uuid4()),
                 "timestamp": datetime.now(UTC).isoformat(),
@@ -63,13 +63,10 @@ async def chat_agent(state: AgentState):
             }
         )
 
-        if state.get("human_comment"):
-            comment = state["human_comment"]
-        else:
-            comment = interrupt("Should I continue?")
+        if not state.get("human_comment"):
+            interrupt("Should I continue?")
 
         return {
-            "human_comment": comment,
             "agent_result": [response.content],
             "completed_steps": ["chat"],
             "task_results": {

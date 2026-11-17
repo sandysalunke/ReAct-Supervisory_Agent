@@ -10,7 +10,7 @@ class AzureEmbeddingWrapper(Embeddings):
 
     def add_usage_tracing(self, response):
         # Add traces in Cosmos DB for cost observability and monitoring
-        container.create_item({
+        container.upsert_item({
             "id": str(uuid.uuid4()),
             "timestamp": datetime.now(UTC).isoformat(),
             "agent": "query_embedding",
@@ -55,7 +55,7 @@ class AzureEmbeddingWrapper(Embeddings):
                 input=text
             )
 
-            await async_container.create_item({
+            await async_container.upsert_item({
                 "id": str(uuid.uuid4()),
                 "timestamp": datetime.now(UTC).isoformat(),
                 "agent": "query_embedding",

@@ -124,7 +124,7 @@ async def hybrid_rag_agent(state: AgentState) -> AgentState:
 
     return {
         "agent_result": [result],
-        "completed_steps": ["file_reasoning"],
+        "completed_steps": ["knowledge_search"],
         "task_results": {
             current_task["id"] : {
                 "intent": current_task["intent"],

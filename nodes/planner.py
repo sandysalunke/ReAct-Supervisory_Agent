@@ -38,11 +38,17 @@ RESERVED_TASK_IDS = frozenset({"summarize_result"})
 
 
 def normalize_execution_plan(
-    execution_plan: Optional[dict],
+    execution_plan: object,
     allowed_intents: Optional[set[str]] = None,
 ) -> dict:
+    if isinstance(execution_plan, list):
+        execution_plan = {"tasks": execution_plan}
+
     if not isinstance(execution_plan, dict):
-        raise ValueError("Execution plan must be a dictionary.")
+        raise ValueError(
+            "Execution plan must be an object containing a 'tasks' list "
+            "or a list of tasks."
+        )
 
     if set(execution_plan) != {"tasks"}:
         raise ValueError("Execution plan must contain only a 'tasks' field.")
@@ -220,6 +226,8 @@ async def create_plan(
 
         Rules:
             - Determine the tasks required to achieve user goal.
+            - Return exactly one JSON object with this shape:
+              {{"tasks":[{{"id":"task-1","intent":"chat","prompt":"...","dependencies":[]}}]}}
             - Return no more than {MAX_PLAN_TASKS} tasks.
             - Each task must have an id, intent, prompt, and optional dependencies field; do not add other fields.
             - Task ids must be unique, at most {MAX_TASK_ID_LENGTH} characters, and start with a letter or digit.
@@ -262,11 +270,11 @@ async def create_plan(
         trace.get_current_span().set_attribute("execution_plan", execution_plan)
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        await async_container.create_item(
+        await async_container.upsert_item(
             {
                 "id": str(uuid.uuid4()),
                 "timestamp": datetime.now(UTC).isoformat(),
-                "agent": "chat_agent",
+                "agent": "planner",
                 "thread_id": thread_id,
                 "model": result.response_metadata["model_name"],
                 "prompt_tokens": usage["prompt_tokens"],
