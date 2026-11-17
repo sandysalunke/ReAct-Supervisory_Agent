@@ -1,10 +1,10 @@
 {
   "sample_count": 60,
-  "exact_matches": 53,
-  "exact_match_accuracy": 0.8833333333333333,
-  "intent_micro_precision": 0.9090909090909091,
-  "intent_micro_recall": 0.9859154929577465,
-  "intent_micro_f1": 0.9459459459459459,
+  "exact_matches": 51,
+  "exact_match_accuracy": 0.85,
+  "intent_micro_precision": 0.8846153846153846,
+  "intent_micro_recall": 0.971830985915493,
+  "intent_micro_f1": 0.9261744966442953,
   "invalid_plan_count": 0,
   "per_intent": {
     "azure_devops": {
@@ -17,11 +17,11 @@
     },
     "chat": {
       "true_positive": 7,
-      "false_positive": 6,
+      "false_positive": 8,
       "false_negative": 0,
-      "precision": 0.5384615384615384,
+      "precision": 0.4666666666666667,
       "recall": 1.0,
-      "f1": 0.7000000000000001
+      "f1": 0.6363636363636364
     },
     "database_search": {
       "true_positive": 6,
@@ -80,15 +80,25 @@
       "f1": 1.0
     },
     "ppt_creation": {
-      "true_positive": 11,
+      "true_positive": 10,
       "false_positive": 0,
-      "false_negative": 0,
+      "false_negative": 1,
       "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0
+      "recall": 0.9090909090909091,
+      "f1": 0.9523809523809523
     }
   },
   "mismatches": [
+    {
+      "id": "database-02",
+      "expected_intents": [
+        "database_search"
+      ],
+      "predicted_intents": [
+        "database_search",
+        "chat"
+      ]
+    },
     {
       "id": "database-03",
       "expected_intents": [
@@ -133,6 +143,17 @@
         "image_generation",
         "chat",
         "ppt_creation"
+      ]
+    },
+    {
+      "id": "mixed-06",
+      "expected_intents": [
+        "knowledge_search",
+        "ppt_creation"
+      ],
+      "predicted_intents": [
+        "knowledge_search",
+        "chat"
       ]
     },
     {
