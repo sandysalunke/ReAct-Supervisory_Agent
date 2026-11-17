@@ -10,7 +10,7 @@ from helpers.dependency_manager import get_dependency_results
 from helpers.chat_history import recent_chat_history
 import uuid
 from datetime import datetime, UTC
-from helpers.cosmos_db_client import async_container
+from helpers.cosmos_db_client import get_async_container
 from pathlib import Path
 from openai import BadRequestError
 
@@ -57,7 +57,7 @@ async def generate_prompt(thread_id, task_prompt, dependency_results, chat_histo
         trace.get_current_span().set_attribute("prompt_length", len(response.content))
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        await async_container.upsert_item(
+        await get_async_container().upsert_item(
             {
                 "id": str(uuid.uuid4()),
                 "timestamp": datetime.now(UTC).isoformat(),
@@ -106,7 +106,7 @@ async def generate_image(thread_id, task_prompt):
         trace.get_current_span().set_attribute("image.total_tokens", usage.total_tokens)
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        await async_container.upsert_item(
+        await get_async_container().upsert_item(
             {
                 "id": str(uuid.uuid4()),
                 "timestamp": datetime.now(UTC).isoformat(),

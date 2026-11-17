@@ -14,7 +14,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
 from agent_state.agent_state import AgentState
 from config.azure_config import llm
-from helpers.cosmos_db_client import async_container
+from helpers.cosmos_db_client import get_async_container
 from helpers.dependency_manager import get_dependency_results
 from utils.tracing import tracer
 from opentelemetry import trace
@@ -184,7 +184,7 @@ async def _record_model_usage(response: Any, thread_id: str | None) -> None:
         "llm.completion_tokens", usage["completion_tokens"]
     )
     trace.get_current_span().set_attribute("llm.total_tokens", usage["total_tokens"])
-    await async_container.upsert_item(
+    await get_async_container().upsert_item(
         {
             "id": str(uuid.uuid4()),
             "timestamp": datetime.now(UTC).isoformat(),

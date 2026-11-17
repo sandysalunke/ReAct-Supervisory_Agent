@@ -8,7 +8,7 @@ from helpers.dependency_manager import get_dependency_results
 from helpers.chat_history import recent_chat_history
 import uuid
 from datetime import datetime, UTC
-from helpers.cosmos_db_client import async_container
+from helpers.cosmos_db_client import get_async_container
 
 
 # chat_agent - Added as node in supervisor agent graph
@@ -49,7 +49,7 @@ async def chat_agent(state: AgentState):
         trace.get_current_span().set_attribute("llm.finish_reason", response.response_metadata["finish_reason"])
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        await async_container.upsert_item(
+        await get_async_container().upsert_item(
             {
                 "id": str(uuid.uuid4()),
                 "timestamp": datetime.now(UTC).isoformat(),

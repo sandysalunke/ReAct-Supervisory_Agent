@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from config.azure_config import llm
-from helpers.cosmos_db_client import async_container
+from helpers.cosmos_db_client import get_async_container
 from utils.tracing import tracer
 from opentelemetry import trace
 
@@ -273,7 +273,7 @@ async def create_plan(
         trace.get_current_span().set_attribute("execution_plan", execution_plan)
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        await async_container.upsert_item(
+        await get_async_container().upsert_item(
             {
                 "id": str(uuid.uuid4()),
                 "timestamp": datetime.now(UTC).isoformat(),

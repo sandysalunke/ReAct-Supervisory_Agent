@@ -4,7 +4,7 @@ from utils.tracing import tracer
 from opentelemetry import trace
 import uuid
 from datetime import datetime, UTC
-from helpers.cosmos_db_client import async_container
+from helpers.cosmos_db_client import get_async_container
 
 async def rate_the_answer(thread_id: str, query: str, answer: str, context: str):
     """
@@ -55,7 +55,7 @@ async def rate_the_answer(thread_id: str, query: str, answer: str, context: str)
         trace.get_current_span().set_attribute("llm.score", score)
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        await async_container.upsert_item(
+        await get_async_container().upsert_item(
             {
                 "id": str(uuid.uuid4()),
                 "timestamp": datetime.now(UTC).isoformat(),
@@ -141,7 +141,7 @@ async def generate_response(
         trace.get_current_span().set_attribute("llm.finish_reason", response.response_metadata["finish_reason"])
 
         # Add traces in Cosmos DB for cost observability and monitoring
-        await async_container.upsert_item(
+        await get_async_container().upsert_item(
             {
                 "id": str(uuid.uuid4()),
                 "timestamp": datetime.now(UTC).isoformat(),

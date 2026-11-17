@@ -4,13 +4,13 @@ from utils.tracing import tracer
 from opentelemetry import trace
 import uuid
 from datetime import datetime, UTC
-from helpers.cosmos_db_client import async_container, container
+from helpers.cosmos_db_client import get_async_container, get_container
 
 class AzureEmbeddingWrapper(Embeddings):
 
     def add_usage_tracing(self, response):
         # Add traces in Cosmos DB for cost observability and monitoring
-        container.upsert_item({
+        get_container().upsert_item({
             "id": str(uuid.uuid4()),
             "timestamp": datetime.now(UTC).isoformat(),
             "agent": "query_embedding",
@@ -55,7 +55,7 @@ class AzureEmbeddingWrapper(Embeddings):
                 input=text
             )
 
-            await async_container.upsert_item({
+            await get_async_container().upsert_item({
                 "id": str(uuid.uuid4()),
                 "timestamp": datetime.now(UTC).isoformat(),
                 "agent": "query_embedding",

@@ -37,6 +37,12 @@ from utils.image_display import split_local_image_paths
 from scripts.evaluate_planner import load_dataset, score_routing
 
 
+def make_async_container():
+    container = Mock()
+    container.upsert_item = AsyncMock()
+    return container
+
+
 async def test_planner_async():
     plan = {
         "tasks": [
@@ -70,20 +76,21 @@ async def test_planner_async():
         },
     )
 
+    mock_container = make_async_container()
     with (
         patch.object(planner, "llm") as mock_llm,
         patch.object(
-            planner.async_container,
-            "upsert_item",
-            new=AsyncMock(),
-        ) as mock_upsert_item,
+            planner,
+            "get_async_container",
+            return_value=mock_container,
+        ),
         patch.object(planner, "save_execution_plan") as mock_save_plan,
     ):
         mock_llm.ainvoke = AsyncMock(return_value=response)
         result = await planner.create_plan("test-thread", "Say hello", None)
 
     mock_llm.ainvoke.assert_awaited_once()
-    mock_upsert_item.assert_awaited_once()
+    mock_container.upsert_item.assert_awaited_once()
     mock_save_plan.assert_called_once_with("test-thread", normalized_plan)
     assert "Route explicit Azure DevOps or ADO data requests to azure_devops" in (
         mock_llm.ainvoke.await_args.args[0]
@@ -276,9 +283,9 @@ async def test_planner_prompt_prioritizes_current_goal_over_attachment():
     with (
         patch.object(planner, "llm") as mock_llm,
         patch.object(
-            planner.async_container,
-            "upsert_item",
-            new=AsyncMock(),
+            planner,
+            "get_async_container",
+            return_value=make_async_container(),
         ),
         patch.object(planner, "save_execution_plan"),
     ):
@@ -384,6 +391,7 @@ async def test_azure_devops_agent_uses_readonly_mcp_tools():
         "task_results": {},
     }
 
+    mock_container = make_async_container()
     with (
         patch.object(
             azure_devops_agent,
@@ -393,6 +401,11 @@ async def test_azure_devops_agent_uses_readonly_mcp_tools():
         patch.object(azure_devops_agent, "_client_locks", {}),
         patch.object(azure_devops_agent, "get_dependency_results", return_value={}),
         patch.object(azure_devops_agent, "llm", fake_llm),
+        patch.object(
+            azure_devops_agent,
+            "get_async_container",
+            return_value=mock_container,
+        ),
     ):
         result = await azure_devops_agent.azure_devops_agent(state)
 
@@ -483,19 +496,20 @@ async def test_chat_agent_async():
         "human_comment": "continue",
     }
 
+    mock_container = make_async_container()
     with (
         patch.object(chat_agent, "llm") as mock_llm,
         patch.object(
-            chat_agent.async_container,
-            "upsert_item",
-            new=AsyncMock(),
-        ) as mock_upsert_item,
+            chat_agent,
+            "get_async_container",
+            return_value=mock_container,
+        ),
     ):
         mock_llm.ainvoke = AsyncMock(return_value=response)
         result = await chat_agent.chat_agent(state)
 
     mock_llm.ainvoke.assert_awaited_once()
-    mock_upsert_item.assert_awaited_once()
+    mock_container.upsert_item.assert_awaited_once()
     assert result["agent_result"] == ["chat response"]
     assert result["task_results"]["chat-task"]["result"] == "chat response"
 
@@ -610,19 +624,20 @@ async def test_async_query_embedding():
         },
     )()
 
+    mock_container = make_async_container()
     with (
         patch.object(embeddings.async_client, "embeddings") as mock_embeddings,
         patch.object(
-            embeddings.async_container,
-            "upsert_item",
-            new=AsyncMock(),
-        ) as mock_upsert_item,
+            embeddings,
+            "get_async_container",
+            return_value=mock_container,
+        ),
     ):
         mock_embeddings.create = AsyncMock(return_value=response)
         result = await embeddings.AzureEmbeddingWrapper().aembed_query("query")
 
     mock_embeddings.create.assert_awaited_once()
-    mock_upsert_item.assert_awaited_once()
+    mock_container.upsert_item.assert_awaited_once()
     assert result == [0.1, 0.2]
 
 
@@ -631,17 +646,75 @@ async def test_cosmos_query_is_async():
         yield {"id": "item-1"}
         yield {"id": "item-2"}
 
+    mock_container = Mock()
+    mock_container.query_items.return_value = items()
     with patch.object(
-        cosmos_db_client.async_container,
-        "query_items",
-        return_value=items(),
-    ) as mock_query:
+        cosmos_db_client,
+        "get_async_container",
+        return_value=mock_container,
+    ):
         result = await cosmos_db_client.query_items("SELECT * FROM c")
 
-    mock_query.assert_called_once_with(
+    mock_container.query_items.assert_called_once_with(
         query="SELECT * FROM c",
     )
     assert result == [{"id": "item-1"}, {"id": "item-2"}]
+
+
+def test_cosmos_clients_are_created_lazily_and_cached():
+    sync_container = Mock()
+    sync_client = Mock()
+    sync_client.get_database_client.return_value.get_container_client.return_value = (
+        sync_container
+    )
+    async_container = Mock()
+    async_client = Mock()
+    async_client.get_database_client.return_value.get_container_client.return_value = (
+        async_container
+    )
+
+    with (
+        patch.object(cosmos_db_client, "_client", None),
+        patch.object(cosmos_db_client, "_container", None),
+        patch.object(cosmos_db_client, "_async_client", None),
+        patch.object(cosmos_db_client, "_async_container", None),
+        patch.object(
+            cosmos_db_client,
+            "CosmosClient",
+            return_value=sync_client,
+        ) as sync_client_factory,
+        patch.object(
+            cosmos_db_client,
+            "AsyncCosmosClient",
+            return_value=async_client,
+        ) as async_client_factory,
+        patch.dict(
+            os.environ,
+            {
+                "COSMOS_ENDPOINT": "https://cosmos.example",
+                "COSMOS_KEY": "test-key",
+                "COSMOS_DATABASE": "test-database",
+                "COSMOS_CONTAINER": "test-container",
+            },
+        ),
+    ):
+        sync_client_factory.assert_not_called()
+        async_client_factory.assert_not_called()
+
+        assert cosmos_db_client.get_container() is sync_container
+        assert cosmos_db_client.get_container() is sync_container
+        sync_client_factory.assert_called_once_with(
+            "https://cosmos.example",
+            credential="test-key",
+        )
+        async_client_factory.assert_not_called()
+
+        assert cosmos_db_client.get_async_container() is async_container
+        assert cosmos_db_client.get_async_container() is async_container
+        async_client_factory.assert_called_once_with(
+            "https://cosmos.example",
+            credential="test-key",
+        )
 
 
 async def test_async_hybrid_search():
@@ -757,13 +830,14 @@ async def test_hybrid_response_and_rating_are_async():
         },
     )
 
+    mock_container = make_async_container()
     with (
         patch.object(hybrid_rag_helper, "llm") as mock_llm,
         patch.object(
-            hybrid_rag_helper.async_container,
-            "upsert_item",
-            new=AsyncMock(),
-        ) as mock_upsert_item,
+            hybrid_rag_helper,
+            "get_async_container",
+            return_value=mock_container,
+        ),
     ):
         mock_llm.ainvoke = AsyncMock(side_effect=[answer, rating])
         result = await hybrid_rag_helper.generate_response(
@@ -773,7 +847,7 @@ async def test_hybrid_response_and_rating_are_async():
         )
 
     assert mock_llm.ainvoke.await_count == 2
-    assert mock_upsert_item.await_count == 2
+    assert mock_container.upsert_item.await_count == 2
     assert result == "Policy answer [1]"
 
 
@@ -1087,14 +1161,15 @@ async def test_image_generation_is_async():
     async def run_in_thread(function, *args, **kwargs):
         return function(*args, **kwargs)
 
+    mock_container = make_async_container()
     with (
         patch.object(image_agent, "llm") as mock_llm,
         patch.object(image_agent, "async_client") as mock_async_client,
         patch.object(
-            image_agent.async_container,
-            "upsert_item",
-            new=AsyncMock(),
-        ) as mock_upsert_item,
+            image_agent,
+            "get_async_container",
+            return_value=mock_container,
+        ),
         patch.object(image_agent.asyncio, "to_thread", new=AsyncMock(side_effect=run_in_thread)),
         patch.object(image_agent, "_write_image") as mock_write,
     ):
@@ -1109,7 +1184,7 @@ async def test_image_generation_is_async():
 
     mock_llm.ainvoke.assert_awaited_once()
     mock_async_client.images.generate.assert_awaited_once()
-    assert mock_upsert_item.await_count == 2
+    assert mock_container.upsert_item.await_count == 2
     mock_write.assert_called_once()
     assert image_path.endswith(".png")
 
@@ -1640,9 +1715,9 @@ async def test_resume_answers_multiple_pending_interrupts():
         ),
         patch.object(chat_agent, "llm") as mock_llm,
         patch.object(
-            chat_agent.async_container,
-            "upsert_item",
-            new=AsyncMock(),
+            chat_agent,
+            "get_async_container",
+            return_value=make_async_container(),
         ),
     ):
         mock_llm.ainvoke = AsyncMock(side_effect=respond_to_task)
