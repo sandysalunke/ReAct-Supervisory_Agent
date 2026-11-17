@@ -63,8 +63,10 @@ async def chat_agent(state: AgentState):
             }
         )
 
-        if not state.get("human_comment"):
-            interrupt("Should I continue?")
+        # If the response is not clear or requires confirmation, interrupt the flow and ask the user for clarification
+        # Uncomment this code if you want to enable user confirmation before proceeding
+        # if not state.get("human_comment"):
+        #     interrupt("Should I continue?")
 
         return {
             "agent_result": [response.content],

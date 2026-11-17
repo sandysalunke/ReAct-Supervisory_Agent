@@ -16,7 +16,7 @@ async def ask_sql_llm(task_prompt, dependency_results, chat_history):
     # SQLite DB connection
     db = await asyncio.to_thread(
         SQLDatabase.from_uri,
-        "sqlite:///sales_multi.db",
+        "sqlite:///file:sales_multi.db?mode=ro&uri=true",
         include_tables=["customers", "orders", "products"],
     )
 
