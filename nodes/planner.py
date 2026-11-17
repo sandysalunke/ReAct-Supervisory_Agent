@@ -174,15 +174,12 @@ def normalize_execution_plan(
     return {"tasks": normalized_tasks}
 
 
-async def create_plan(
-    thread_id: str, prompt: str, uploaded_file: Optional[str]
-) -> dict:
-    
-    prompt = f"""
+def build_planner_prompt(user_goal: str, uploaded_file: Optional[str]) -> str:
+    return f"""
         Create a workflow DAG.
 
         USER GOAL:
-        {prompt}
+        {user_goal}
 
         UPLOADED FILE PATH:
         {uploaded_file}
@@ -253,10 +250,16 @@ async def create_plan(
             database access, files, meetings, images, or spreadsheets.
         """
 
+
+async def create_plan(
+    thread_id: str, prompt: str, uploaded_file: Optional[str]
+) -> dict:
+    planner_prompt = build_planner_prompt(prompt, uploaded_file)
+
     with tracer.start_as_current_span("planner.create_plan", attributes={"llm_used": True, "thread_id": thread_id}):
     
         # Invoke LLM
-        result = await llm.ainvoke(prompt)
+        result = await llm.ainvoke(planner_prompt)
 
         execution_plan = normalize_execution_plan(json.loads(result.content))
 

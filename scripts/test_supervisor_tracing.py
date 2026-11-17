@@ -34,6 +34,7 @@ from helpers import embeddings, hybrid_rag_helper
 from helpers import cosmos_db_client
 from tools import excel_tools
 from utils.image_display import split_local_image_paths
+from scripts.evaluate_planner import load_dataset, score_routing
 
 
 async def test_planner_async():
@@ -223,6 +224,30 @@ def test_execution_plan_validation_and_limits():
         except ValueError:
             continue
         raise AssertionError(f"Expected plan to be rejected: {invalid_plan!r}")
+
+
+def test_planner_routing_eval_dataset_and_metrics():
+    cases = load_dataset()
+    assert 50 <= len(cases) <= 100
+
+    sample_cases = [
+        {"id": "one", "expected_intents": ["chat"]},
+        {"id": "two", "expected_intents": ["chat", "ppt_creation"]},
+    ]
+    report = score_routing(
+        sample_cases,
+        {
+            "one": ["chat"],
+            "two": ["chat", "database_search"],
+        },
+    )
+
+    assert report["sample_count"] == 2
+    assert report["exact_matches"] == 1
+    assert report["exact_match_accuracy"] == 0.5
+    assert report["intent_micro_precision"] == 2 / 3
+    assert report["intent_micro_recall"] == 2 / 3
+    assert report["intent_micro_f1"] == 2 / 3
 
 
 async def test_planner_prompt_prioritizes_current_goal_over_attachment():
@@ -1682,6 +1707,7 @@ def write_plan(thread_id: str):
 
 async def main():
     test_execution_plan_validation_and_limits()
+    test_planner_routing_eval_dataset_and_metrics()
     await test_planner_async()
     await test_planner_prompt_prioritizes_current_goal_over_attachment()
     await test_azure_devops_agent_uses_readonly_mcp_tools()

@@ -1,0 +1,176 @@
+{
+  "sample_count": 60,
+  "exact_matches": 53,
+  "exact_match_accuracy": 0.8833333333333333,
+  "intent_micro_precision": 0.9090909090909091,
+  "intent_micro_recall": 0.9859154929577465,
+  "intent_micro_f1": 0.9459459459459459,
+  "invalid_plan_count": 0,
+  "per_intent": {
+    "azure_devops": {
+      "true_positive": 6,
+      "false_positive": 0,
+      "false_negative": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "chat": {
+      "true_positive": 7,
+      "false_positive": 6,
+      "false_negative": 0,
+      "precision": 0.5384615384615384,
+      "recall": 1.0,
+      "f1": 0.7000000000000001
+    },
+    "database_search": {
+      "true_positive": 6,
+      "false_positive": 0,
+      "false_negative": 1,
+      "precision": 1.0,
+      "recall": 0.8571428571428571,
+      "f1": 0.923076923076923
+    },
+    "excel_analysis": {
+      "true_positive": 8,
+      "false_positive": 0,
+      "false_negative": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "file_reasoning": {
+      "true_positive": 5,
+      "false_positive": 0,
+      "false_negative": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "image_generation": {
+      "true_positive": 6,
+      "false_positive": 1,
+      "false_negative": 0,
+      "precision": 0.8571428571428571,
+      "recall": 1.0,
+      "f1": 0.923076923076923
+    },
+    "image_to_text": {
+      "true_positive": 6,
+      "false_positive": 0,
+      "false_negative": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "knowledge_search": {
+      "true_positive": 9,
+      "false_positive": 0,
+      "false_negative": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "meeting_assistant": {
+      "true_positive": 6,
+      "false_positive": 0,
+      "false_negative": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "ppt_creation": {
+      "true_positive": 11,
+      "false_positive": 0,
+      "false_negative": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  },
+  "mismatches": [
+    {
+      "id": "database-03",
+      "expected_intents": [
+        "database_search"
+      ],
+      "predicted_intents": [
+        "chat"
+      ]
+    },
+    {
+      "id": "mixed-02",
+      "expected_intents": [
+        "excel_analysis",
+        "ppt_creation"
+      ],
+      "predicted_intents": [
+        "excel_analysis",
+        "image_generation",
+        "ppt_creation"
+      ]
+    },
+    {
+      "id": "mixed-04",
+      "expected_intents": [
+        "image_to_text",
+        "knowledge_search"
+      ],
+      "predicted_intents": [
+        "image_to_text",
+        "knowledge_search",
+        "chat"
+      ]
+    },
+    {
+      "id": "mixed-05",
+      "expected_intents": [
+        "image_generation",
+        "ppt_creation"
+      ],
+      "predicted_intents": [
+        "chat",
+        "image_generation",
+        "chat",
+        "ppt_creation"
+      ]
+    },
+    {
+      "id": "mixed-07",
+      "expected_intents": [
+        "azure_devops",
+        "ppt_creation"
+      ],
+      "predicted_intents": [
+        "azure_devops",
+        "chat",
+        "ppt_creation"
+      ]
+    },
+    {
+      "id": "mixed-08",
+      "expected_intents": [
+        "excel_analysis",
+        "knowledge_search"
+      ],
+      "predicted_intents": [
+        "excel_analysis",
+        "knowledge_search",
+        "chat"
+      ]
+    },
+    {
+      "id": "mixed-10",
+      "expected_intents": [
+        "database_search",
+        "ppt_creation"
+      ],
+      "predicted_intents": [
+        "chat",
+        "database_search",
+        "chat",
+        "ppt_creation"
+      ]
+    }
+  ]
+}

@@ -39,6 +39,14 @@
 - Planner output is validated before it is saved or used to build a workflow graph.
 - Plans must contain 1-8 tasks, use supported intents and unique task IDs, and form an acyclic dependency graph with valid references.
 - Each task prompt is limited to 4,000 characters; invalid plans fail explicitly instead of being truncated or partially executed.
+
+### Planner routing evaluation
+- `evals/planner_routing.jsonl` contains 60 golden prompts, including single-intent, attached-file, and multi-agent cases.
+- Run `python scripts\evaluate_planner.py` to evaluate the configured chat model. The report includes exact intent-set accuracy, micro precision/recall/F1, per-intent scores, and mismatches.
+- Use `python scripts\evaluate_planner.py --limit 5` for a small smoke run. Each evaluated prompt invokes the configured model; the evaluator does not write usage records to Cosmos DB or save workflow plans.
+- Progress is printed for each prompt; the final report is printed as JSON. Add `--output evals\planner-results.json` to save a copy.
+- Add labeled examples to the JSONL dataset when routing behavior changes; `expected_intents` should list every intent the plan is expected to contain.
+- Open the **Evaluation** page in Streamlit to review saved `evals\planner-results*.json` reports, per-intent scores, and mismatches. You can also upload a report JSON directly.
       
 ### Architecture:
 ```python

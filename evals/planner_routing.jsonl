@@ -1,0 +1,60 @@
+{"id":"chat-01","prompt":"Explain the difference between a compiler and an interpreter in plain language.","uploaded_file":null,"expected_intents":["chat"]}
+{"id":"chat-02","prompt":"Rewrite this paragraph to sound warmer and more concise: 'Your request was received and will be processed.'","uploaded_file":null,"expected_intents":["chat"]}
+{"id":"chat-03","prompt":"Brainstorm five names for a neighborhood gardening club.","uploaded_file":null,"expected_intents":["chat"]}
+{"id":"chat-04","prompt":"Draft a polite email declining a meeting because I have a scheduling conflict.","uploaded_file":null,"expected_intents":["chat"]}
+{"id":"chat-05","prompt":"Give me a beginner-friendly explanation of how solar panels generate electricity.","uploaded_file":null,"expected_intents":["chat"]}
+{"id":"database-01","prompt":"How many orders were placed in March 2025?","uploaded_file":null,"expected_intents":["database_search"]}
+{"id":"database-02","prompt":"List the five customers with the highest total spending.","uploaded_file":null,"expected_intents":["database_search"]}
+{"id":"database-03","prompt":"Compare the average order value by city.","uploaded_file":null,"expected_intents":["database_search"]}
+{"id":"database-04","prompt":"Which products in the database have a price above 100?","uploaded_file":null,"expected_intents":["database_search"]}
+{"id":"database-05","prompt":"Show monthly revenue totals for the previous calendar year.","uploaded_file":null,"expected_intents":["database_search"]}
+{"id":"file-01","prompt":"Summarize the key recommendations in the document I uploaded.","uploaded_file":"data/uploads/strategy.pdf","expected_intents":["file_reasoning"]}
+{"id":"file-02","prompt":"In this uploaded contract, what is the termination notice period?","uploaded_file":"data/uploads/vendor_contract.docx","expected_intents":["file_reasoning"]}
+{"id":"file-03","prompt":"Compare the main risks described in the two uploaded reports.","uploaded_file":"data/uploads/risk_review.docx","expected_intents":["file_reasoning"]}
+{"id":"file-04","prompt":"Find the section in the uploaded presentation that explains the rollout timeline.","uploaded_file":"data/uploads/rollout.pptx","expected_intents":["file_reasoning"]}
+{"id":"file-05","prompt":"Extract the action items listed in the uploaded project notes.","uploaded_file":"data/uploads/project_notes.txt","expected_intents":["file_reasoning"]}
+{"id":"knowledge-01","prompt":"According to our organization policy, how many days of parental leave are employees eligible for?","uploaded_file":null,"expected_intents":["knowledge_search"]}
+{"id":"knowledge-02","prompt":"Who owns the approval process for production database access?","uploaded_file":null,"expected_intents":["knowledge_search"]}
+{"id":"knowledge-03","prompt":"What is the internal process for reporting a workplace safety incident?","uploaded_file":null,"expected_intents":["knowledge_search"]}
+{"id":"knowledge-04","prompt":"Which product tier includes advanced audit logging, according to our product documentation?","uploaded_file":null,"expected_intents":["knowledge_search"]}
+{"id":"knowledge-05","prompt":"What does our organization mean by the term 'service readiness review'?","uploaded_file":null,"expected_intents":["knowledge_search"]}
+{"id":"excel-01","prompt":"Calculate total revenue by region from the spreadsheet I uploaded.","uploaded_file":"data/uploads/quarterly_revenue.xlsx","expected_intents":["excel_analysis"]}
+{"id":"excel-02","prompt":"Identify duplicate customer rows in this workbook and report their count.","uploaded_file":"data/uploads/customer_export.xlsx","expected_intents":["excel_analysis"]}
+{"id":"excel-03","prompt":"Create a line chart showing monthly units sold from the uploaded spreadsheet.","uploaded_file":"data/uploads/monthly_sales.xlsx","expected_intents":["excel_analysis"]}
+{"id":"excel-04","prompt":"Which department has the highest average expense in the attached workbook?","uploaded_file":"data/uploads/expenses.xlsx","expected_intents":["excel_analysis"]}
+{"id":"excel-05","prompt":"Summarize the missing values in each column of the spreadsheet I attached.","uploaded_file":"data/uploads/inventory.xlsx","expected_intents":["excel_analysis"]}
+{"id":"ocr-01","prompt":"Read the text on this uploaded image.","uploaded_file":"data/uploads/sign.png","expected_intents":["image_to_text"]}
+{"id":"ocr-02","prompt":"Extract the invoice number, date, and total from the attached invoice image.","uploaded_file":"data/uploads/invoice.jpg","expected_intents":["image_to_text"]}
+{"id":"ocr-03","prompt":"Transcribe the handwritten note in the image I uploaded.","uploaded_file":"data/uploads/handwritten_note.jpeg","expected_intents":["image_to_text"]}
+{"id":"ocr-04","prompt":"What text appears on the label in this picture?","uploaded_file":"data/uploads/product_label.webp","expected_intents":["image_to_text"]}
+{"id":"ocr-05","prompt":"Read the street name and house number from the uploaded photo.","uploaded_file":"data/uploads/street_sign.png","expected_intents":["image_to_text"]}
+{"id":"image-01","prompt":"Generate an editorial illustration of a city park in spring, with people walking and flowering trees.","uploaded_file":null,"expected_intents":["image_generation"]}
+{"id":"image-02","prompt":"Create a clean vector-style icon of a compass for a travel app.","uploaded_file":null,"expected_intents":["image_generation"]}
+{"id":"image-03","prompt":"Generate a realistic image of a modern community library with natural light.","uploaded_file":null,"expected_intents":["image_generation"]}
+{"id":"image-04","prompt":"Create a colorful infographic-style image about reducing household food waste.","uploaded_file":null,"expected_intents":["image_generation"]}
+{"id":"image-05","prompt":"Make a watercolor landscape of a quiet mountain lake at sunrise.","uploaded_file":null,"expected_intents":["image_generation"]}
+{"id":"meeting-01","prompt":"Transcribe and summarize the uploaded team meeting recording.","uploaded_file":"data/uploads/team_sync.mp3","expected_intents":["meeting_assistant"]}
+{"id":"meeting-02","prompt":"Extract the decisions, action items, owners, and due dates from this recording.","uploaded_file":"data/uploads/planning_call.wav","expected_intents":["meeting_assistant"]}
+{"id":"meeting-03","prompt":"Summarize the main topics discussed in the video meeting I uploaded.","uploaded_file":"data/uploads/customer_review.mp4","expected_intents":["meeting_assistant"]}
+{"id":"meeting-04","prompt":"Create a concise transcript of the attached interview audio.","uploaded_file":"data/uploads/interview.m4a","expected_intents":["meeting_assistant"]}
+{"id":"meeting-05","prompt":"Identify the risks and unresolved questions raised in this meeting recording.","uploaded_file":"data/uploads/project_meeting.webm","expected_intents":["meeting_assistant"]}
+{"id":"ppt-01","prompt":"Create a five-slide presentation explaining the benefits and risks of remote work.","uploaded_file":null,"expected_intents":["ppt_creation"]}
+{"id":"ppt-02","prompt":"Turn these notes into an executive presentation with a title slide and recommendations.","uploaded_file":null,"expected_intents":["ppt_creation"]}
+{"id":"ppt-03","prompt":"Create a presentation introducing our new customer onboarding process.","uploaded_file":null,"expected_intents":["ppt_creation"]}
+{"id":"ppt-04","prompt":"Generate a short PowerPoint deck for a quarterly business review.","uploaded_file":null,"expected_intents":["ppt_creation"]}
+{"id":"ppt-05","prompt":"Build a presentation summarizing the key milestones for a product launch.","uploaded_file":null,"expected_intents":["ppt_creation"]}
+{"id":"ado-01","prompt":"List the projects I can access in Azure DevOps.","uploaded_file":null,"expected_intents":["azure_devops"]}
+{"id":"ado-02","prompt":"Show the current status of work item 4821 in ADO.","uploaded_file":null,"expected_intents":["azure_devops"]}
+{"id":"ado-03","prompt":"Find pull requests created this week in the mobile-app repository.","uploaded_file":null,"expected_intents":["azure_devops"]}
+{"id":"ado-04","prompt":"What was the result of the latest build for the release pipeline?","uploaded_file":null,"expected_intents":["azure_devops"]}
+{"id":"ado-05","prompt":"Search our Azure DevOps wiki for the deployment runbook.","uploaded_file":null,"expected_intents":["azure_devops"]}
+{"id":"mixed-01","prompt":"Compare revenue by region in the uploaded spreadsheet with the system records, explain discrepancies, and summarize the findings.","uploaded_file":"data/uploads/regional_revenue.xlsx","expected_intents":["excel_analysis","database_search","chat"]}
+{"id":"mixed-02","prompt":"Analyze the uploaded sales workbook, make a chart of quarterly trends, and create a presentation with the findings.","uploaded_file":"data/uploads/sales_trends.xlsx","expected_intents":["excel_analysis","ppt_creation"]}
+{"id":"mixed-03","prompt":"Analyze this meeting recording, extract action items with owners and due dates, and create a management presentation.","uploaded_file":"data/uploads/leadership_meeting.mp4","expected_intents":["meeting_assistant","ppt_creation"]}
+{"id":"mixed-04","prompt":"Read the text from the uploaded receipt image, compare it with our organization's expense policy, and summarize any inconsistencies.","uploaded_file":"data/uploads/receipt.png","expected_intents":["image_to_text","knowledge_search"]}
+{"id":"mixed-05","prompt":"Generate a professional infographic about AI adoption trends and create a five-slide presentation explaining it.","uploaded_file":null,"expected_intents":["image_generation","ppt_creation"]}
+{"id":"mixed-06","prompt":"Find our organization's data-retention requirements and create a short presentation for employees.","uploaded_file":null,"expected_intents":["knowledge_search","ppt_creation"]}
+{"id":"mixed-07","prompt":"Review open Azure DevOps work items for the migration and prepare an executive presentation of their status.","uploaded_file":null,"expected_intents":["azure_devops","ppt_creation"]}
+{"id":"mixed-08","prompt":"Analyze the uploaded staffing spreadsheet and compare its role definitions with our internal job-leveling standards.","uploaded_file":"data/uploads/staffing_plan.xlsx","expected_intents":["excel_analysis","knowledge_search"]}
+{"id":"mixed-09","prompt":"Look up our parental leave policy and draft a concise email to my manager explaining my eligibility.","uploaded_file":null,"expected_intents":["knowledge_search","chat"]}
+{"id":"mixed-10","prompt":"Analyze system sales by quarter and create a PowerPoint deck with the main trends.","uploaded_file":null,"expected_intents":["database_search","ppt_creation"]}
