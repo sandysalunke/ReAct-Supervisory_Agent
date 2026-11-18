@@ -1,0 +1,70 @@
+<div class="page">
+  <h1>Performance</h1>
+  <p class="caption">Answer-quality ratings recorded for knowledge-search responses.</p>
+
+  @if (error(); as message) {
+    <div class="notice error" role="alert">{{ message }}</div>
+  } @else if (performance(); as performance) {
+    @if (performance.rated_responses === 0) {
+      <div class="notice">No rated responses have been recorded yet.</div>
+    } @else {
+      <div class="tiles">
+        @for (metric of metrics; track metric.key) {
+          <div class="tile">
+            <div class="label">{{ metric.label }}</div>
+            <div class="value">{{ performance.averages[metric.key] | number: '1.0-2' }}</div>
+          </div>
+        }
+      </div>
+
+      <h2>Scores by category</h2>
+      <div class="chart-box">
+        <app-chart [labels]="metricLabels" [series]="averageSeries()" label="Scores by category" />
+      </div>
+
+      <h2>Daily quality trend</h2>
+      <div class="chart-box">
+        <app-chart
+          type="line"
+          [labels]="dayLabels()"
+          [series]="dailySeries()"
+          label="Daily quality trend"
+        />
+      </div>
+
+      <h2>Low score threads</h2>
+      @if (performance.low_scores.length === 0) {
+        <div class="notice success">
+          No response scored below {{ performance.low_score_threshold }}.
+        </div>
+      } @else {
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Thread</th>
+                @for (metric of metrics; track metric.key) {
+                  <th class="num">{{ metric.label }}</th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of performance.low_scores; track $index) {
+                <tr>
+                  <td>{{ row.timestamp | date: 'medium' }}</td>
+                  <td>{{ row.thread_id }}</td>
+                  @for (metric of metrics; track metric.key) {
+                    <td class="num">{{ row[metric.key] }}</td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    }
+  } @else {
+    <p class="caption" role="status">Loading…</p>
+  }
+</div>

@@ -1,0 +1,14 @@
+<nav class="sidebar">
+  <div class="brand">GenAI Copilot</div>
+  @for (page of pages; track page.path) {
+    <a
+      [routerLink]="page.path"
+      routerLinkActive="active"
+      [routerLinkActiveOptions]="{ exact: page.exact }"
+      >{{ page.label }}</a
+    >
+  }
+</nav>
+<main>
+  <router-outlet />
+</main>

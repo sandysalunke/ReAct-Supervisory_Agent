@@ -1,0 +1,149 @@
+<div class="page">
+  <h1>Planner Evaluation Dashboard</h1>
+  <p class="caption">Routing quality from saved planner evaluation JSON reports.</p>
+
+  <div class="controls">
+    @if (reports(); as reports) {
+      @if (reports.length > 0) {
+        <label>
+          <span>Saved evaluation report</span>
+          <select
+            [disabled]="uploadedName() !== null"
+            (change)="selectReport($any($event.target).value)"
+          >
+            @for (report of reports; track report.name) {
+              <option [value]="report.name" [selected]="report.name === selectedName()">
+                {{ report.path }}
+              </option>
+            }
+          </select>
+        </label>
+      }
+    }
+
+    <label>
+      <span>Upload an evaluation report</span>
+      <input type="file" accept=".json,application/json" (change)="onUpload($event)" />
+    </label>
+
+    @if (uploadedName(); as name) {
+      <div class="uploaded">
+        Showing upload: {{ name }}
+        <button type="button" (click)="clearUpload()">Clear</button>
+      </div>
+    }
+  </div>
+
+  @if (error(); as message) {
+    <div class="notice error" role="alert">{{ message }}</div>
+  } @else if (loading()) {
+    <p class="caption" role="status">Loading…</p>
+  } @else if (view(); as view) {
+    <p class="caption">Report: {{ view.source }}</p>
+
+    <div class="tiles">
+      <div class="tile">
+        <div class="label">Cases</div>
+        <div class="value">{{ view.summary.sample_count | number }}</div>
+      </div>
+      <div
+        class="tile"
+        [title]="view.summary.exact_matches + ' plans matched all expected intents.'"
+      >
+        <div class="label">Exact match</div>
+        <div class="value">{{ view.summary.exact_match_accuracy | percent: '1.1-1' }}</div>
+      </div>
+      <div class="tile">
+        <div class="label">Micro precision</div>
+        <div class="value">{{ view.summary.intent_micro_precision | percent: '1.1-1' }}</div>
+      </div>
+      <div class="tile">
+        <div class="label">Micro recall</div>
+        <div class="value">{{ view.summary.intent_micro_recall | percent: '1.1-1' }}</div>
+      </div>
+      <div class="tile">
+        <div class="label">Micro F1</div>
+        <div class="value">{{ view.summary.intent_micro_f1 | percent: '1.1-1' }}</div>
+      </div>
+      <div class="tile">
+        <div class="label">Invalid plans</div>
+        <div class="value">{{ view.summary.invalid_plan_count | number }}</div>
+      </div>
+    </div>
+
+    <h2>Routing scores by intent</h2>
+    @if (view.per_intent.length === 0) {
+      <div class="notice">This report contains no per-intent scores.</div>
+    } @else {
+      <div class="chart-box">
+        <app-chart
+          [labels]="intentLabels()"
+          [series]="intentSeries()"
+          [max]="100"
+          label="Routing scores by intent"
+        />
+      </div>
+      <div class="table-wrap scores">
+        <table>
+          <thead>
+            <tr>
+              <th>Intent</th>
+              <th class="num">Precision</th>
+              <th class="num">Recall</th>
+              <th class="num">F1</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of view.per_intent; track row.intent) {
+              <tr>
+                <td>{{ row.intent }}</td>
+                <td class="num">{{ row.precision | number: '1.1-1' }}</td>
+                <td class="num">{{ row.recall | number: '1.1-1' }}</td>
+                <td class="num">{{ row.f1 | number: '1.1-1' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    <h2>Mismatches</h2>
+    @if (view.warning) {
+      <div class="notice warning">{{ view.warning }}</div>
+    }
+    @if (view.mismatches.length === 0) {
+      <div class="notice success">All prompts matched their expected intents.</div>
+    } @else {
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Case</th>
+              <th>Prompt</th>
+              <th>Expected intents</th>
+              <th>Predicted intents</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of view.mismatches; track row.id) {
+              <tr>
+                <td>{{ row.id }}</td>
+                <td>{{ row.prompt }}</td>
+                <td>{{ row.expected_intents.join(', ') }}</td>
+                <td>{{ row.predicted_intents.join(', ') }}</td>
+                <td>{{ row.error }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  } @else {
+    <div class="notice">
+      No evaluation report found. Run
+      <code>python scripts\evaluate_planner.py --output evals\planner-results.json</code> to create
+      one.
+    </div>
+  }
+</div>

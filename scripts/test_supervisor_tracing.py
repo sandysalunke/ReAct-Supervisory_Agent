@@ -29,7 +29,6 @@ from agents import azure_devops_agent
 from nodes import classifier
 from helpers import ppt_helper
 from helpers.chat_history import recent_chat_history
-from utils.async_runner import AsyncLoopRunner
 from helpers import embeddings, hybrid_rag_helper
 from helpers import cosmos_db_client
 from tools import excel_tools
@@ -868,7 +867,7 @@ async def test_sql_agent_uses_async_executor():
 
     assert result == "sales answer"
     mock_from_uri.assert_called_once_with(
-        "sqlite:///sales_multi.db",
+        "sqlite:///file:sales_multi.db?mode=ro&uri=true",
         include_tables=["customers", "orders", "products"],
     )
     mock_create_agent.assert_called_once()
@@ -1318,20 +1317,6 @@ def test_presentation_paths_are_unique_per_call():
     assert mock_presentation.return_value.save.call_args_list[1].args == (
         second_path,
     )
-
-
-def test_async_loop_runner_reuses_loop():
-    runner = AsyncLoopRunner()
-
-    async def current_loop_id():
-        return id(asyncio.get_running_loop())
-
-    try:
-        first_loop_id = runner.run(current_loop_id())
-        second_loop_id = runner.run(current_loop_id())
-        assert first_loop_id == second_loop_id
-    finally:
-        runner.close()
 
 
 async def test_classifier_uses_async_model():
@@ -1812,7 +1797,6 @@ async def main():
     await test_ppt_agent_and_helper_async_boundary()
     test_assistant_message_splits_image_paths_for_rendering()
     test_presentation_paths_are_unique_per_call()
-    test_async_loop_runner_reuses_loop()
     await test_classifier_uses_async_model()
     with patch.object(chat_agent, "chat_agent", fake_chat_agent):
         await test_workflow_awaits_planner()

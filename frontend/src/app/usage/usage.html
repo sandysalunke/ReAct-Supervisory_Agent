@@ -1,0 +1,96 @@
+<div class="page">
+  <h1>Usage</h1>
+  <p class="caption">Token usage recorded in Cosmos DB for every model call.</p>
+
+  @if (error(); as message) {
+    <div class="notice error" role="alert">{{ message }}</div>
+  } @else if (usage(); as usage) {
+    <div class="tiles">
+      <div class="tile">
+        <div class="label">Total calls</div>
+        <div class="value">{{ usage.total_calls | number }}</div>
+      </div>
+      <div class="tile">
+        <div class="label">Total tokens</div>
+        <div class="value">{{ usage.total_tokens | number }}</div>
+      </div>
+      <div class="tile">
+        <div class="label">Avg tokens / call</div>
+        <div class="value">{{ usage.avg_tokens_per_call | number }}</div>
+      </div>
+    </div>
+
+    @if (usage.total_calls === 0) {
+      <div class="notice">No usage has been recorded yet.</div>
+    } @else {
+      <h2>Tokens by agent</h2>
+      <div class="chart-box">
+        <app-chart [labels]="agentLabels()" [series]="agentTokens()" label="Tokens by agent" />
+      </div>
+
+      <h2>Tokens by model</h2>
+      <div class="chart-box">
+        <app-chart [labels]="modelLabels()" [series]="modelTokens()" label="Tokens by model" />
+      </div>
+
+      <h2>Calls by agent</h2>
+      <div class="chart-box">
+        <app-chart [labels]="callLabels()" [series]="agentCalls()" label="Calls by agent" />
+      </div>
+
+      <h2>Token share by agent</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th class="num">Total tokens</th>
+              <th class="num">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of usage.tokens_by_agent; track row.agent) {
+              <tr>
+                <td>{{ row.agent }}</td>
+                <td class="num">{{ row.total_tokens | number }}</td>
+                <td class="num">{{ row.percent | number: '1.1-1' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Daily tokens</h2>
+      <div class="chart-box">
+        <app-chart
+          type="line"
+          [labels]="dayLabels()"
+          [series]="dailyTokens()"
+          label="Daily tokens"
+        />
+      </div>
+
+      <h2>Top conversations</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Thread</th>
+              <th class="num">Total tokens</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of usage.top_threads; track row.thread_id) {
+              <tr>
+                <td>{{ row.thread_id }}</td>
+                <td class="num">{{ row.total_tokens | number }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  } @else {
+    <p class="caption" role="status">Loading…</p>
+  }
+</div>

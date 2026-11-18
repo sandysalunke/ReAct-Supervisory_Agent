@@ -17,4 +17,5 @@ async def add_numbers():
         )
 
         print(result)
+        return str(getattr(result, "data", result))
 

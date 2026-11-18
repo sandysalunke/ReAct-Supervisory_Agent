@@ -1,0 +1,68 @@
+<header>
+  <h1>GenAI Copilot</h1>
+  <button type="button" (click)="newChat()" [disabled]="pending() || messages().length === 0">
+    New chat
+  </button>
+</header>
+
+<div class="messages" #scroller>
+  <div class="column">
+    @if (messages().length === 0 && !pending()) {
+      <p class="empty">
+        Ask a question, or attach a document, spreadsheet, image or meeting recording to work with.
+      </p>
+    }
+
+    @for (message of messages(); track $index) {
+      <article class="message" [class]="message.role" [class.interrupted]="message.interrupted">
+        <div class="role">{{ roleLabel(message.role) }}</div>
+        @for (segment of message.segments; track $index) {
+          @if (segment.type === 'image') {
+            <img [src]="segment.url" alt="Generated image" />
+          } @else if (message.role === 'user') {
+            <div class="plain">{{ segment.text }}</div>
+          } @else {
+            <div class="markdown" [innerHTML]="markdown(segment.text)"></div>
+          }
+        }
+      </article>
+    }
+
+    @if (pending()) {
+      <div class="thinking" role="status">Thinking…</div>
+    }
+
+    @if (error(); as message) {
+      <div class="notice error" role="alert">{{ message }}</div>
+    }
+  </div>
+</div>
+
+<form class="composer" (submit)="$event.preventDefault(); send()">
+  <div class="column">
+    @if (selectedFile(); as file) {
+      <div class="attachment">
+        <span>Attached: {{ file.name }}</span>
+        <button type="button" class="remove" (click)="clearSelectedFile()" aria-label="Remove file">
+          ✕
+        </button>
+      </div>
+    } @else if (rememberedFileName()) {
+      <div class="attachment muted">Using earlier upload: {{ rememberedFileName() }}</div>
+    }
+
+    <div class="input-row">
+      <input #fileInput type="file" hidden (change)="onFileSelected($event)" />
+      <button type="button" (click)="fileInput.click()" [disabled]="pending()">Attach file</button>
+      <textarea
+        rows="1"
+        placeholder="Ask a question…"
+        aria-label="Message"
+        [value]="draft()"
+        (input)="draft.set($any($event.target).value)"
+        (keydown)="onDraftKeydown($event)"
+      ></textarea>
+      <button type="submit" class="primary" [disabled]="pending() || !draft().trim()">Send</button>
+    </div>
+  </div>
+</form>

@@ -1,0 +1,18 @@
+<div class="page">
+  <h1>MCP sample</h1>
+  <p class="caption">
+    Calls the <code>add</code> tool on the sample Math MCP server with 10 and 20. Start the server
+    first with <code>python mcp_servers/math_server.py</code>.
+  </p>
+
+  <button type="button" class="primary" (click)="run()" [disabled]="pending()">
+    {{ pending() ? 'Running…' : 'Run add(10, 20)' }}
+  </button>
+
+  @if (result(); as value) {
+    <div class="notice success" role="status">Result: {{ value }}</div>
+  }
+  @if (error(); as message) {
+    <div class="notice error" role="alert">{{ message }}</div>
+  }
+</div>

@@ -24,15 +24,47 @@
 - Configure `AZURE_DEVOPS_ORG` with the organization name (defaults to `selection-navigator`).
 - Install Node.js 20 or later and Azure CLI, then sign in as the user whose access should be used with `az login`. The local server uses `--authentication azcli`; it does not initiate a separate browser sign-in.
 - The MCP server loads only the core, work, work-item, repository, pipeline, wiki, and search domains. The agent additionally filters the tool list and allowed action values to read-only operations.
-- The Azure CLI identity must have permission to read the requested organization, projects, and resources. In a hosted or multi-user deployment, this uses the app host's Azure CLI identity; do not treat it as per-Streamlit-user authentication.
+- The Azure CLI identity must have permission to read the requested organization, projects, and resources. In a hosted or multi-user deployment, this uses the app host's Azure CLI identity; do not treat it as per-user authentication.
 - Azure DevOps MCP uses the FastMCP client dependency declared in `requirements.txt`.
 
+### Running the app
+The UI is an Angular app in `frontend/`; the backend is a FastAPI app in `api/` that wraps the LangGraph workflow.
+
+Backend (from the project root, serves on http://127.0.0.1:8001):
+```
+pip install -r requirements.txt
+python main.py
+```
+
+Frontend in development (serves on http://localhost:4200 and proxies `/api` to the backend):
+```
+cd frontend
+npm install
+npm start
+```
+
+Single-process mode: run `npm run build` in `frontend/` once, then `python main.py` also serves the built UI at http://127.0.0.1:8001.
+
+- Set `API_HOST` / `API_PORT` to change where the backend listens (the default port is 8001 because the sample Math MCP server uses 8000). If you change the port, update `frontend/proxy.conf.json` too.
+- Run the API tests with `python scripts	est_api.py` (the workflow and Cosmos DB are mocked).
+
+### API
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/chat` | Multipart form: `message`, optional `session_id`, optional `file`. Runs (or resumes, after a human-in-the-loop interrupt) the workflow and returns the new messages. |
+| `GET /api/chat/{session_id}` / `DELETE /api/chat/{session_id}` | Read or reset a chat session. |
+| `GET /api/files/{path}` | Serves generated images from `data/`. |
+| `GET /api/usage`, `GET /api/performance` | Aggregated Cosmos DB data for the Usage and Performance dashboards. |
+| `GET /api/evaluation/reports`, `GET /api/evaluation/reports/{name}`, `POST /api/evaluation/reports` | List, view, or upload-and-view planner evaluation reports. |
+| `POST /api/mcp/add-numbers` | Runs the sample MCP client. |
+
+- Chat sessions (history and the last uploaded file) are kept in server memory, like the workflow checkpointer, and are lost when the backend restarts. The browser keeps its session ID per tab.
+- Interactive API docs are available at http://127.0.0.1:8001/docs.
+
 ### Async workflow
-- The Streamlit UI remains synchronous, but the LangGraph workflow uses async graph invocation (`ainvoke`) and async task nodes.
-- Streamlit uses a shared background event loop so shared async SDK clients stay on one loop across UI reruns.
-- Planner, chat, uploaded-document and hybrid RAG, SQL, Excel, OCR, meeting, image-generation, PowerPoint, classifier, and Cosmos usage/dashboard paths now use async APIs.
+- FastAPI runs the LangGraph workflow directly on its event loop using async graph invocation (`ainvoke`) and async task nodes, so shared async SDK clients stay on one loop.
+- Planner, chat, uploaded-document and hybrid RAG, SQL, Excel, OCR, meeting, image-generation, PowerPoint, classifier, and Cosmos usage/dashboard paths use async APIs.
 - Blocking document/image/audio I/O, vector-store and SQLite setup, local cache access, PowerPoint rendering, and dataframe/code execution run in worker threads; large audio chunking uses an async FFmpeg subprocess.
-- The sync-only UI submits workflow coroutines to the shared background event loop and waits for their results.
 - Summary/state assembly remains synchronous because it does no network or blocking file work.
 
 ### Planner execution-plan limits
@@ -46,7 +78,7 @@
 - Use `python scripts\evaluate_planner.py --limit 5` for a small smoke run. Each evaluated prompt invokes the configured model; the evaluator does not write usage records to Cosmos DB or save workflow plans.
 - Progress is printed for each prompt; the final report is printed as JSON. Add `--output evals\planner-results.json` to save a copy.
 - Add labeled examples to the JSONL dataset when routing behavior changes; `expected_intents` should list every intent the plan is expected to contain.
-- Open the **Evaluation** page in Streamlit to review saved `evals\planner-results*.json` reports, per-intent scores, and mismatches. You can also upload a report JSON directly.
+- Open the **Evaluation** page in the UI to review saved `evals\planner-results*.json` reports, per-intent scores, and mismatches. You can also upload a report JSON directly.
       
 ### Architecture:
 ```python

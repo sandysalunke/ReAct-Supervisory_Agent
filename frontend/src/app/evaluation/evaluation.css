@@ -1,0 +1,31 @@
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+label select,
+label input {
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.uploaded {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scores {
+  margin-top: 12px;
+}

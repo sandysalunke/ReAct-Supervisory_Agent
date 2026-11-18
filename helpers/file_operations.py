@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 import hashlib
+import shutil
 import pandas as pd
 from langchain_core.documents import Document
 from unstructured.partition.auto import partition
@@ -8,16 +9,17 @@ from unstructured.partition.auto import partition
 UPLOAD_DIR = Path("./data/uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-def save_uploaded_file(uploaded_file):
+def save_uploaded_file(original_name, file_object):
+    """Copy an uploaded binary file object into the upload directory."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
-    extension = Path(uploaded_file.name).suffix
+    extension = Path(original_name).suffix
     filename = f"{timestamp}{extension}"
 
     file_path = UPLOAD_DIR / filename
 
     with open(file_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
+        shutil.copyfileobj(file_object, f)
 
     return str(file_path)
 
