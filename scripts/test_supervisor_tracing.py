@@ -1,6 +1,7 @@
 import os
 import asyncio
 import json
+import pytest
 import sys
 from pathlib import Path
 import uuid
@@ -1347,18 +1348,37 @@ async def test_workflow_awaits_planner():
         "thread_id": "test-thread-planner",
     }
 
-    with patch.object(
-        planner,
-        "create_plan",
-        new=AsyncMock(return_value=plan),
-    ) as mock_create_plan:
+    response_metadata = {
+        "token_usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+        "model_name": "test-model",
+        "finish_reason": "stop",
+    }
+
+    with (
+        patch.object(
+            planner,
+            "create_plan",
+            new=AsyncMock(return_value=plan),
+        ) as mock_create_plan,
+        patch.object(chat_agent, "llm") as mock_llm,
+        patch.object(
+            chat_agent,
+            "get_async_container",
+            return_value=make_async_container(),
+        ),
+    ):
+        mock_llm.ainvoke = AsyncMock(
+            return_value=AIMessage(content="Hello", response_metadata=response_metadata)
+        )
         service = supervisor_graph.WorkflowService(request)
         result = await service.invoke(request)
 
     mock_create_plan.assert_awaited_once_with(
         "test-thread-planner", "Say hello", None
     )
-    assert result["workflow_status"] == "INTERRUPTED"
+    # The chat agent's confirmation interrupt is switched off (agents/chat_agent.py,
+    # 64d1472), so the workflow runs to the end.
+    assert result["workflow_status"] == "COMPLETED"
 
 
 async def test_workflow_rejects_invalid_plan_before_graph_creation():
@@ -1651,6 +1671,9 @@ async def test_execution_plan_cleanup_only_after_completion():
     ]
 
 
+@pytest.mark.skip(
+    reason="The chat agent's confirmation interrupt is switched off (agents/chat_agent.py, 64d1472)"
+)
 async def test_resume_answers_multiple_pending_interrupts():
     plan = {
         "tasks": [

@@ -31,3 +31,7 @@ opentelemetry-sdk==1.45.1
 opentelemetry-exporter-otlp-proto-grpc==1.45.1
 opentelemetry-exporter-otlp-proto-common==1.45.1
 opentelemetry-exporter-otlp-common==0.66b1
+# Draws the supervisor graph (graphs/supervisor_graph.py prints it as ASCII)
+grandalf==0.8
+# Tests: the async tests in scripts/
+pytest-asyncio==1.5.0

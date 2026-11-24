@@ -7,7 +7,7 @@ from langchain_core.documents import Document
 from unstructured.partition.auto import partition
 
 UPLOAD_DIR = Path("./data/uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 def save_uploaded_file(original_name, file_object):
     """Copy an uploaded binary file object into the upload directory."""
