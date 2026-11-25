@@ -2,6 +2,7 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
 from langchain_core.messages import (
@@ -24,6 +25,9 @@ class ChatSession:
     """Per-browser-session state (what Streamlit kept in st.session_state)."""
 
     chat_history: list[BaseMessage] = field(default_factory=list)
+    # Parallel to chat_history: entry i is when message i was sent (UTC), or
+    # None when unknown. Kept out of the messages, which go into agent prompts.
+    sent_at: list[str | None] = field(default_factory=list)
     # Remembered so the user can keep referencing a file without re-uploading it.
     uploaded_file_path: str = ""
     uploaded_file_name: str = ""
@@ -33,7 +37,9 @@ class ChatSession:
 # In-memory, like the workflow checkpointer: sessions are lost on restart.
 _sessions: dict[str, ChatSession] = {}
 
-
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat()
+    
 def _is_interrupted(message: BaseMessage) -> bool:
     return message.additional_kwargs.get("workflow_status") == "INTERRUPTED"
 
@@ -42,7 +48,14 @@ def _content_text(content) -> str:
     return content if isinstance(content, str) else str(content)
 
 
-def serialize_message(message: BaseMessage) -> dict:
+def serialize_message(message: BaseMessage, sent_at: str | None = None) -> dict:
+    serialized = _serialize_content(message)
+    if sent_at is not None:
+        # Left out, not null, for messages without a recorded time.
+        serialized["sent_at"] = sent_at
+    return serialized
+
+def _serialize_content(message: BaseMessage) -> dict:
     text = _content_text(message.content)
 
     if isinstance(message, AIMessage):
@@ -77,9 +90,17 @@ def serialize_message(message: BaseMessage) -> dict:
 
 
 def _session_payload(session_id: str, session: ChatSession) -> dict:
+    # Read both lists once: send_message replaces them rather than mutating.
+    chat_history = session.chat_history
+    sent_at = session.sent_at
     return {
         "session_id": session_id,
-        "messages": [serialize_message(message) for message in session.chat_history],
+        "messages": [
+            serialize_message(
+                message, sent_at[index] if index < len(sent_at) else None
+            )
+            for index, message in enumerate(chat_history)
+        ],
         "uploaded_file_name": session.uploaded_file_name,
     }
 
@@ -132,6 +153,8 @@ async def send_message(
     if not prompt:
         raise HTTPException(status_code=422, detail="The message must not be empty.")
 
+    # Taken before waiting on the session lock: when the server got the message.
+    received_at = _utc_now()
     if session_id is None or session_id not in _sessions:
         session_id = str(uuid.uuid4())
         _sessions[session_id] = ChatSession()
@@ -152,15 +175,28 @@ async def send_message(
             raise HTTPException(
                 status_code=500, detail=f"The workflow failed: {error}"
             ) from error
+        replied_at = _utc_now()
 
         new_messages = result["data"]["messages"]
+        new_sent_at = [
+            received_at if isinstance(new_message, HumanMessage) else replied_at
+            for new_message in new_messages
+        ]
+        # Keep sent_at in step with chat_history: older messages have no time.
+        known_sent_at = session.sent_at[: len(session.chat_history)]
+        padding = [None] * (len(session.chat_history) - len(known_sent_at))
+        session.sent_at = known_sent_at + padding + new_sent_at
         session.chat_history = session.chat_history + new_messages
 
+    print("===========", session.sent_at)
     return {
         "session_id": session_id,
         "thread_id": result["thread_id"],
         "workflow_status": result["workflow_status"],
-        "messages": [serialize_message(new_message) for new_message in new_messages],
+        "messages": [
+            serialize_message(new_message, new_sent_at[index])
+            for index, new_message in enumerate(new_messages)
+        ],
         "uploaded_file_name": session.uploaded_file_name,
     }
 

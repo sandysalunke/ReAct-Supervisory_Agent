@@ -83,16 +83,22 @@ Single-process mode: run `npm run build` in `frontend/` once, then `python main.
 ### Architecture:
 ```python
                             +--------------------+
-                            |   User Interface   |
-                            | (Web/Mobile/Teams) |
+                            |  Client (Angular)  |
+                            |                    |
                             +---------+----------+
                                       |
                                       v
-                             +-------------------+
-                             |  LangGraph Router |
-                             |  Supervisor Agent |
-                             +---------+---------+
-                                       |
+                            +--------------------+
+                            |  Server (FastAPI)  |
+                            |                    |
+                            +---------+----------+
+                                      |
+                                      v
+                           +-----------------------+
+                           |    Planner DAG        |
+                           | (Langchain/Langgraph) |
+                           +-----------------------+
+                                      |
       -----------------------------------------------------------------------------
       |         |          |         |          |           |           |         |
       v         v          v         v          v           v           v         v
