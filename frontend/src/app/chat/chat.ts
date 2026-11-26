@@ -10,6 +10,7 @@ import {
 import { HttpErrorResponse } from '@angular/common/http';
 import { marked } from 'marked';
 import { Api, ChatMessage, errorMessage } from '../api';
+import { formatSentAt } from './sent-at';
 
 const SESSION_KEY = 'copilot.sessionId';
 
@@ -71,6 +72,11 @@ export class Chat {
 
   protected roleLabel(role: string): string {
     return ROLE_LABELS[role] ?? role;
+  }
+
+  /** Date and time to show for a message; empty when it has no recorded time. */
+  protected sentAt(message: ChatMessage): string {
+    return formatSentAt(message.sent_at);
   }
 
   protected markdown(text: string): string {

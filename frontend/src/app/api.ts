@@ -8,6 +8,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'tool' | 'system' | string;
   segments: MessageSegment[];
   interrupted?: boolean;
+  /** When the message was sent: ISO-8601, UTC. Absent when no time was recorded. */
+  sent_at?: string;
 }
 
 export interface ChatResponse {

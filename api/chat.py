@@ -188,7 +188,6 @@ async def send_message(
         session.sent_at = known_sent_at + padding + new_sent_at
         session.chat_history = session.chat_history + new_messages
 
-    print("===========", session.sent_at)
     return {
         "session_id": session_id,
         "thread_id": result["thread_id"],

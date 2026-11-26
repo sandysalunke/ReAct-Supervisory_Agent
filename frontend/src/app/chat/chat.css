@@ -46,11 +46,23 @@ h1 {
   min-width: 0;
 }
 
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  margin-bottom: 2px;
+}
+
 .role {
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-muted);
-  margin-bottom: 2px;
+}
+
+.sent-at {
+  font-size: 0.75rem;
+  color: var(--text-muted);
 }
 
 .message.user {

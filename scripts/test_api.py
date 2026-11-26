@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -112,6 +113,107 @@ def test_chat_keeps_history_and_resumes_interrupts():
 
     assert client.delete(f"/api/chat/{session_id}").status_code == 204
     assert client.get(f"/api/chat/{session_id}").status_code == 404
+
+
+def _parse_sent_at(message: dict) -> datetime:
+    """The message's sent_at as a datetime; fails unless it is ISO-8601 in UTC."""
+    assert isinstance(message.get("sent_at"), str), message
+    parsed = datetime.fromisoformat(message["sent_at"])
+    assert parsed.utcoffset() == timedelta(0), message["sent_at"]
+    return parsed
+
+
+def test_chat_messages_carry_sent_at():
+    FakeWorkflowService.requests = []
+    started = datetime.now(UTC)
+    with patch.object(supervisor_graph, "WorkflowService", FakeWorkflowService):
+        first = client.post("/api/chat", data={"message": "hello"}).json()
+        session_id = first["session_id"]
+        interrupted = client.post(
+            "/api/chat", data={"message": "interrupt me", "session_id": session_id}
+        ).json()
+        resumed = client.post(
+            "/api/chat", data={"message": "yes", "session_id": session_id}
+        ).json()
+    finished = datetime.now(UTC)
+
+    posted = first["messages"] + interrupted["messages"] + resumed["messages"]
+    assert [message["role"] for message in posted] == [
+        "user",
+        "assistant",
+        "user",
+        "system",
+        "user",
+        "assistant",
+    ]
+    assert posted[3]["interrupted"] is True
+
+    # Every message, whatever its role, has a UTC time, in conversation order.
+    times = [_parse_sent_at(message) for message in posted]
+    assert times == sorted(times)
+    assert started <= times[0] and times[-1] <= finished
+
+    # Loading the session returns the same times as the sends did.
+    history = client.get(f"/api/chat/{session_id}").json()["messages"]
+    assert [message["role"] for message in history] == [
+        message["role"] for message in posted
+    ]
+    assert [message["sent_at"] for message in history] == [
+        message["sent_at"] for message in posted
+    ]
+
+    assert client.delete(f"/api/chat/{session_id}").status_code == 204
+
+
+def test_messages_without_a_recorded_time_omit_sent_at():
+    for message in (
+        HumanMessage(content="hi"),
+        AIMessage(content="hello"),
+        SystemMessage(content="note"),
+    ):
+        assert "sent_at" not in chat.serialize_message(message)
+        assert "sent_at" not in chat.serialize_message(message, None)
+
+    recorded = "2026-05-04T09:15:30.123456+00:00"
+    assert chat.serialize_message(HumanMessage(content="hi"), recorded)["sent_at"] == recorded
+
+    # A session whose sent_at list has a gap and is shorter than its history.
+    session_id = f"untimed-{uuid.uuid4().hex}"
+    chat._sessions[session_id] = chat.ChatSession(
+        chat_history=[
+            HumanMessage(content="first"),
+            AIMessage(content="second"),
+            HumanMessage(content="third"),
+            AIMessage(content="fourth"),
+        ],
+        sent_at=[recorded, None],
+    )
+    try:
+        history = client.get(f"/api/chat/{session_id}").json()["messages"]
+        assert len(history) == 4
+        assert history[0]["sent_at"] == recorded
+        for untimed in history[1:]:
+            assert "sent_at" not in untimed
+
+        # A new turn is timed without shifting a time onto the untimed messages.
+        with patch.object(supervisor_graph, "WorkflowService", FakeWorkflowService):
+            sent = client.post(
+                "/api/chat", data={"message": "hello", "session_id": session_id}
+            ).json()
+        assert sent["session_id"] == session_id
+        for timed in sent["messages"]:
+            _parse_sent_at(timed)
+
+        history = client.get(f"/api/chat/{session_id}").json()["messages"]
+        assert len(history) == 6
+        assert history[0]["sent_at"] == recorded
+        for untimed in history[1:4]:
+            assert "sent_at" not in untimed
+        assert [message["sent_at"] for message in history[4:]] == [
+            message["sent_at"] for message in sent["messages"]
+        ]
+    finally:
+        chat._sessions.pop(session_id, None)
 
 
 def test_chat_upload_is_saved_and_remembered():
@@ -277,6 +379,8 @@ def test_evaluation_dashboard():
 def main():
     test_health()
     test_chat_keeps_history_and_resumes_interrupts()
+    test_chat_messages_carry_sent_at()
+    test_messages_without_a_recorded_time_omit_sent_at()
     test_chat_upload_is_saved_and_remembered()
     test_save_uploaded_file_copies_stream()
     test_chat_errors()
