@@ -15,7 +15,12 @@
 
     @for (message of messages(); track $index) {
       <article class="message" [class]="message.role" [class.interrupted]="message.interrupted">
-        <div class="role">{{ roleLabel(message.role) }}</div>
+        <div class="meta">
+          <div class="role">{{ roleLabel(message.role) }}</div>
+          @if (sentAt(message); as label) {
+            <time class="sent-at" [attr.datetime]="message.sent_at">{{ label }}</time>
+          }
+        </div>
         @for (segment of message.segments; track $index) {
           @if (segment.type === 'image') {
             <img [src]="segment.url" alt="Generated image" />
